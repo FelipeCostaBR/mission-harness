@@ -163,6 +163,15 @@ Decisions  (pure rules, evaluated against the mission's artifacts)
 
 ## The seats
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/seats-dark.png">
+  <img alt="A swimlane across five actors. The orchestrator writes the validation contract; a human approves it before any code exists; the orchestrator then routes one feature to a worker, which builds inside a single area's paths. The worker hands off to a validator running in a fresh context that never saw the implementation, and the validator's verdicts feed a deterministic rule engine that returns advance, corrective or stop. A corrective decision routes back to the orchestrator for another round." src="docs/diagrams/seats.png">
+</picture>
+
+*The coral edge is the one that matters: the seat that builds hands off to a seat
+that never saw it being built. Everything else is arranged to protect that
+boundary.*
+
 | Seat | Context | Can edit? | Job |
 | --- | --- | --- | --- |
 | **orchestrator** | the whole mission | no code | Plans, routes, adjudicates |
@@ -171,6 +180,30 @@ Decisions  (pure rules, evaluated against the mission's artifacts)
 | **reviewer** | fresh, parallel siblings | **no** | Attacks the plan before code exists |
 | **escalation worker** | fresh | a tight per-escalation grant | Changes protected surfaces |
 | **simplifier** | fresh, no contract | one area's globs | Reuse, dedup, altitude |
+
+Note the bottom lane. The advance / corrective / stop decision is not made by any
+of the agents — it is a pure function with a test suite. A model under context
+pressure will eventually talk itself into a third corrective round; a tested rule
+will not.
+
+## Why it runs anywhere
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/architecture-dark.png">
+  <img alt="A repository is surveyed once into a single config file, which is the only place project knowledge lives. That config feeds two separated halves: runtime-agnostic seat prompts that carry judgement, and a pure tested rule engine plus CLI that carry the decisions. Any agent runtime loads the prompts and writes mission artifacts; the CLI reads those artifacts to evaluate the rules. Swapping the runtime or the repository leaves everything else unchanged." src="docs/diagrams/architecture.png">
+</picture>
+
+Three properties fall out of that shape:
+
+- **Project knowledge enters at exactly one place.** Adapting the harness to a
+  new codebase changes one file. Nothing in `src/` or `prompts/` knows what your
+  repo looks like.
+- **Judgement and determinism are separate artifacts.** The prompts are plain
+  markdown that any model can read. The rules are pure functions with tests and
+  no model call in them. Neither can quietly become the other.
+- **The runtime is swappable.** Claude Code, Codex, Cursor, or you pasting into a
+  chat window — the mission's state lives in files, so a mission planned under one
+  runtime can be built under another.
 
 ## Why the rules are what they are
 
