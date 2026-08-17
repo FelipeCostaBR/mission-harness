@@ -238,7 +238,7 @@ export function checkBookkeeping(state, opts = {}) {
 
   // 5. Checkpoint knowledge. A milestone that advanced without recording a
   //    decision leaves the next context window nothing to inherit but status.
-  //    That is measurably not enough: a status-only brief did NOT reduce a fresh
+  //    That is not enough in practice: a status-only brief did NOT reduce a fresh
   //    session's ramp-to-first-work, because the session re-derived what it knew
   //    by re-reading source anyway. Warn, never error — the convention post-dates
   //    existing missions and must not block a mid-flight resume.

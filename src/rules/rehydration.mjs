@@ -9,10 +9,10 @@
  *
  * Why this is the highest-leverage rule in the harness:
  *
- * A mission does not fit in one context window, and it never will. Measured
- * across real multi-window missions, the ceiling was never the failure — the TOLL
- * was. Roughly 30-42% of ALL orchestrator tokens went on re-orientation: a fresh
- * window re-reading source to rediscover what the previous window already knew.
+ * A mission does not fit in one context window, and it never will. Across real
+ * multi-window missions the ceiling was never the failure — the TOLL was. Most of
+ * what a fresh window spends goes on re-orientation: re-reading source to
+ * rediscover what the previous window already knew.
  *
  * A status-only brief did NOT fix that. Sessions given one learned WHERE they were
  * and then re-derived WHAT they knew anyway. So the brief carries two halves with
@@ -21,9 +21,9 @@
  *     milestone boundary. This is the reasoning a later window would otherwise
  *     relitigate.
  *   - artifactTrail — derived MECHANICALLY from the handoff files by the caller,
- *     never model-written. Artifact-trail fidelity is the weakest dimension of
- *     every summarizer, and it is exactly the part a fresh session cannot cheaply
- *     re-derive.
+ *     never model-written. Artifact-trail fidelity is the weakest dimension of a
+ *     model-written summary, and it is exactly the part a fresh session cannot
+ *     cheaply re-derive.
  *
  * Pure: no I/O. The caller (`src/io/mission.mjs`) supplies `artifacts` from the
  * mission folder's handoffs/ and verdicts/ listings.
@@ -55,8 +55,8 @@ const CAPS = { decisions: 10, constraints: 8, features: 12, filesPerFeature: 5, 
  * Hard ceiling on the RENDERED brief, enforced structurally in
  * `renderRehydrationBrief` (knowledge lines are dropped until it fits) rather
  * than merely asserted in a test. This brief is auto-injected on every session
- * start, so an unbounded worst case would be paid on every single reset.
- * ~1.5k tokens against a ~110k re-derivation ramp is still a ~70x trade.
+ * start, so an unbounded worst case would be paid on every single reset. Roughly
+ * 1.5k tokens against a re-derivation ramp orders of magnitude larger.
  */
 const MAX_BRIEF_CHARS = 6000
 

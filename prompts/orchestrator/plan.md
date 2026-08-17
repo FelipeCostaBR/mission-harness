@@ -5,10 +5,10 @@ routing. It is a **validation contract**: a definition of "done" that is
 independent of the implementation, plus a milestone plan, gated on a human's
 explicit approval.
 
-This phase is where missions are won or lost. Roughly **40% of all defects found
-across real runs existed before a line of code was written** — they were defects
-in the contract, in the partition, or in a premise nobody checked. A defect
-introduced here is not caught by a better worker; it is faithfully implemented.
+This phase is where missions are won or lost. **Most of the defects found across
+real runs existed before a line of code was written** — they were defects in the
+contract, in the partition, or in a premise nobody checked. A defect introduced
+here is not caught by a better worker; it is faithfully implemented.
 
 Read `docs/schemas.md` for the exact JSON shapes.
 

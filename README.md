@@ -70,9 +70,9 @@ Five properties do the work:
 
 **1. The contract is written and approved before any code.**
 One assertion per testable claim. The question asked of every one: *could this
-pass while the feature is broken?* If yes, it gets rewritten. Roughly **40% of
-the defects found across real runs existed before a line of code was written** —
-this is where they are catchable.
+pass while the feature is broken?* If yes, it gets rewritten. **Most of the
+defects found across real runs existed before a line of code was written** — this
+is where they are catchable.
 
 **2. Workers are path-scoped and cannot escape.**
 A worker edits one area's globs and nothing else. A change it needs elsewhere is
@@ -90,10 +90,10 @@ test suite, because a model under context pressure will eventually rationalise
 its way past a paragraph.
 
 **5. The mission survives its own context window.**
-A real mission spans many windows. Measured: **30-42% of all orchestrator tokens
-went on re-orientation**. `contractor brief` reconstructs position *and*
-accumulated knowledge in ≤6KB, so a reset costs a couple of thousand tokens
-instead of a hundred thousand.
+A real mission spans many windows, and **most of what a fresh window spends goes
+on re-orientation** — re-reading source to rediscover what the last one knew.
+`contractor brief` reconstructs position *and* accumulated knowledge in ≤6KB, so
+a reset costs a couple of thousand tokens instead of a hundred thousand.
 
 ## Adapting it to your codebase
 

@@ -140,8 +140,8 @@ Instruct every worker that its **last action** is to WRITE its full handoff to
 `<missionDir>/handoffs/<feature-id>.json` itself, and then RETURN only the
 **digest** (`HANDOFF_DIGEST_SCHEMA` from `contractor-harness`, ~1KB).
 
-This is not tidiness. Full handoffs returning through your context measured at
-10-18% of a worker-heavy session, and the object then passed through a *second*
+This is not tidiness. Full handoffs returning through your context took a large
+share of a worker-heavy session, and the object then passed through a *second*
 time as the write that persisted it. The digest keeps everything your spawn loop
 acts on — status, assertions covered, escalations **with full file lists**,
 clipped issues, failed commands. Validators read the full object from disk, where
@@ -230,7 +230,7 @@ Once the milestone's features are built and before validation, run **one spawned
 worker per touched area** with `contractor prompt seats/simplifier`.
 
 **Spawn it; do not do it inline.** Two reasons. It is the last code-editing seam
-left in your seat, and it is measurably expensive there. And the orchestrator who
+left in your seat, and it is an expensive one there. And the orchestrator who
 just directed the build is the worst candidate to refactor it — a fresh worker
 holds none of the rationalisations for why the code looks the way it does.
 

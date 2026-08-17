@@ -67,9 +67,9 @@ Widening an area to absorb one is the most tempting way to break the harness.
 You can, by widening your areas. You will be trading a visible cost for an
 invisible one.
 
-On one large mission, roughly two thirds of the escalations were **structural**
-rather than error — the harness asking permission to touch a shared surface, and
-not reducible by a better worker. What *was* reducible was **when** they
+On one large mission, most of the escalations were **structural** rather than
+error — the harness asking permission to touch a shared surface, and not
+reducible by a better worker. What *was* reducible was **when** they
 surfaced. Enumerated at plan time they become one early batch; discovered
 mid-milestone, each one interrupts a running milestone.
 
@@ -88,7 +88,7 @@ breaker trips, which recovers a meaningful share of would-be human escalations.
 
 ### Why does the worker write its own handoff instead of returning it?
 
-Context. Full handoffs returning through the orchestrator measured 10-18% of a
+Context. Full handoffs returning through the orchestrator took a large share of a
 worker-heavy session, and the object then passed through a second time as the
 write that persisted it. Now the worker writes the file and returns ~1KB;
 validators read the full object from disk, where it always lived.

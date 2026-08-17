@@ -10,8 +10,8 @@ The unifying property: **none of these are caught by "did the tests pass?"**
 
 ## Plan phase
 
-Roughly 40% of the defects found across real runs existed before a line of code
-was written. These are the expensive ones, because a faithful worker implements
+Most of the defects found across real runs existed before a line of code was
+written. These are the expensive ones, because a faithful worker implements
 them correctly.
 
 ### The assertion that passes while the feature is broken

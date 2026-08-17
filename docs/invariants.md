@@ -21,7 +21,7 @@ assumption the next worker depends on.
 ### 2. The contract is written before any code, and a human approves it
 
 A definition of done authored after the implementation describes the
-implementation. The approval gate is not ceremony: roughly 40% of defects found
+implementation. The approval gate is not ceremony: most of the defects found
 across real runs existed before a line of code was written, and this is the only
 point where a human sees the plan cheaply enough to change it.
 
@@ -91,7 +91,7 @@ Three silent no-ops make this necessary, and they mask each other:
 
 Inline escalation work collapses the creator/verifier split on precisely the
 highest-blast-radius files in the repository, and it was the orchestrator's
-largest reducible context sink (11-28% of long sessions).
+largest reducible context sink on long sessions.
 
 `contractor escalate` size-gates it. `additiveOnly` defaults to false because
 wrongly-inline (creator/verifier collapse on real logic) is far worse than
@@ -104,7 +104,7 @@ ever spawned and the creator/verifier restoration silently did not happen.
 
 ### 9. Workers persist their own handoffs and return a digest
 
-Full handoffs returning through the orchestrator measured 10-18% of a
+Full handoffs returning through the orchestrator took a large share of a
 worker-heavy session, and passed through its context a second time as the write
 that persisted them.
 
@@ -161,22 +161,22 @@ cannot edit them. **Never widen an area's globs to absorb one.**
 
 Enumerate them at plan time and batch them into one early milestone. Discovered
 mid-milestone, each interrupts a running milestone to serialize through the
-orchestrator; roughly two thirds of the escalations on one large mission were
-structural rather than error, and it was *when* they surfaced that cost.
+orchestrator; on one large mission most of the escalations were structural rather
+than error, and it was *when* they surfaced that cost.
 
 ### 14. Orchestrator context is a mission resource
 
-A mission runs across many context windows. Measured: **30-42% of all
-orchestrator tokens went on re-orientation** — each fresh window re-reading source
-to rediscover what the previous one knew. The window ceiling was never the
-failure; the toll at each window change was.
+A mission runs across many context windows, and **most of what a fresh window
+spends goes on re-orientation** — re-reading source to rediscover what the
+previous one knew. The window ceiling was never the failure; the toll at each
+window change was.
 
 Therefore: the artifacts are the only memory; `contractor brief` replaces
 re-reading; `decisions[]` and `constraints[]` are written at every boundary; and
 the reset fires **at a milestone boundary, never at a token threshold** — a
 threshold can land mid-worker and checkpoint a torn state.
 
-A brief carrying status alone measurably did **not** reduce the toll. The
+A brief carrying status alone did **not** reduce the toll in practice. The
 knowledge half is what makes a reset cheap, and a cheap reset is what makes
 per-milestone resets viable at all.
 

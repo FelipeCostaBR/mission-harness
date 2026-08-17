@@ -88,8 +88,8 @@ paths. That fallback is always available and always correct.
 ## Context
 
 The mission's artifacts are its only memory. To reorient a fresh session, run
-`contractor brief` — never re-read the raw artifacts. Measured on real missions,
-re-orientation consumed 30-42% of all orchestrator tokens when done by re-reading.
+`contractor brief` — never re-read the raw artifacts. On real missions,
+re-orientation by re-reading consumed most of what a fresh window spent.
 
 ## Finish honestly
 

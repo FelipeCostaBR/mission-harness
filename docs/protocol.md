@@ -56,8 +56,8 @@ worthless.
 ### Reviewer — attacks the plan before code exists
 
 Read-only, spawned in parallel with siblings in **separate** contexts. Roughly
-40% of defects found across real runs existed before a line of code was written.
-This seat is the only one positioned to catch them.
+Most of the defects found across real runs existed before a line of code was
+written. This seat is the only one positioned to catch them.
 
 Parallel and separate is load-bearing: shared context means shared blind spots.
 An orchestrator role-playing four reviewer personas in one window misses the same
@@ -67,8 +67,8 @@ thing four times and comes back confident.
 
 Shared kernels, schemas, generated registries, public APIs. Delegated rather than
 done inline for two reasons: inline work collapses the creator/verifier split on
-exactly the highest-blast-radius files, and it was measurably the orchestrator's
-largest reducible context sink (11-28% of long sessions).
+exactly the highest-blast-radius files, and it was the orchestrator's largest
+reducible context sink on long sessions.
 
 ### Simplifier — cleans up, before validation
 

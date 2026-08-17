@@ -34,7 +34,7 @@ $EDITOR .contractor/missions/csv-export/spec.md
 **2. Plan.** Give your strongest model `contractor prompt plan` plus the spec. It
 returns a contract, a milestone plan, and an approval summary. **Read the summary
 and approve or revise it.** This is the cheapest point in the whole mission to
-change your mind, and the one where 40% of defects are still catchable.
+change your mind, and the one where most defects are still catchable.
 
 **3. Arm and build.**
 

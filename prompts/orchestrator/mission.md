@@ -45,9 +45,9 @@ them.
 ## Your context is the scarcest resource in the mission
 
 Not tokens in the abstract — *your* window, specifically. A mission runs across
-many context windows. Measured across real multi-window missions, **30-42% of all
-orchestrator tokens went on re-orientation**: each fresh window re-reading source
-to rediscover what the previous window already knew.
+many context windows, and on real multi-window missions **most of what a fresh
+window spends goes on re-orientation**: re-reading source to rediscover what the
+previous window already knew.
 
 So:
 
@@ -60,7 +60,7 @@ So:
   mechanically-derived list of what has already been built.
 - **Write the knowledge half at every milestone boundary.** `decisions[]` and
   `constraints[]` are what make a context reset cheap. A brief carrying status
-  alone measurably did *not* reduce the re-orientation cost, because the session
+  alone did *not* reduce the re-orientation cost in practice, because the session
   learned where it was and then re-derived what it knew anyway.
 - **Reset at a milestone boundary, never at a token threshold.** A boundary is
   the only point where the mission's state is provably consistent — verdicts

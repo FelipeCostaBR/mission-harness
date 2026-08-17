@@ -136,7 +136,7 @@ The contract-scoped validators check the ASSERTED claims plus the defaults. They
 do not run an open-ended correctness hunt, and a new area's contract cannot
 assert invariants nobody anticipated.
 
-This is a real and measured gap: on one mission every milestone passed its
+This is a real and observed gap: on one mission every milestone passed its
 validators and the gate first try, with zero corrective rounds — and a separate
 human-run code review found genuine defects in each one, including write-path
 authorization holes, wrong-row writes, and a non-idempotent race.
@@ -295,14 +295,14 @@ so it is the only safe place to reset your window.
   later milestone breaks itself on.
 
 Do **not** hand-write a file list. The artifact trail is derived mechanically
-from the handoffs, because artifact-trail fidelity is the weakest dimension of
-every summarizer measured — and it is exactly the part a fresh session cannot
-cheaply re-derive. Write prose only for reasoning.
+from the handoffs, because artifact-trail fidelity is the weakest dimension of a
+model-written summary — and it is exactly the part a fresh session cannot cheaply
+re-derive. Write prose only for reasoning.
 
 **If a context reset is pending**, confirm the checkpoint is written and
 committed, then say so plainly in your final message. **Do not clear the flag
 yourself** — you cannot verify a reset happened, and an orchestrator that
-discharges its own reset signal will run on for another 200k tokens with the
+discharges its own reset signal will run on for another whole session with the
 state file claiming nothing was needed.
 
 If no reset is pending, just advance. Resetting after a cheap milestone costs the

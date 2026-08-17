@@ -4,8 +4,8 @@
  * A worker's full handoff is a big object: everything it built, every command it
  * ran, every issue it found. If that object is the worker's RETURN value, it
  * re-enters the orchestrator's context whole — and then a second time as the
- * write that persists it. Measured on real runs, worker returns accounted for
- * 10-18% of a worker-heavy orchestrator session.
+ * write that persists it. On real runs, worker returns accounted for a large
+ * share of a worker-heavy orchestrator session.
  *
  * So persistence is inverted. The WORKER writes its own full handoff to
  * `handoffs/<feature-id>.json` as its last action, and its RETURN is only this

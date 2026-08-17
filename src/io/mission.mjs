@@ -65,9 +65,9 @@ const listJson = (dir) =>
  * Extract the repo-relative file paths a handoff mentions.
  *
  * This is deliberately MECHANICAL rather than model-written. Artifact-trail
- * fidelity is the weakest dimension of every summarizer measured — a model asked
- * to list "the files I touched" reliably invents, merges or omits them. A regex
- * over the handoff's own prose is dumber and more truthful.
+ * fidelity is the weakest dimension of a model-written summary — a model asked to
+ * list "the files I touched" reliably invents, merges or omits them. A regex over
+ * the handoff's own prose is dumber and more truthful.
  */
 const PATH_RX = /(?:^|[\s"'`(\[])([\w.@-]+(?:\/[\w.@-]+)+\.[A-Za-z0-9]{1,8})/g
 

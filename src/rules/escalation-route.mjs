@@ -10,9 +10,10 @@
  *      VERIFIES the change, with no adversarial seat in between. Escalations
  *      touch the highest-blast-radius files in the repo, so this is exactly
  *      backwards.
- *   2. It is the orchestrator's largest reducible context sink. Measured across
- *      real long-running missions, inline escalation work consumed 11-28% of the
- *      orchestrator's window — the window every later milestone depends on.
+ *   2. It is the orchestrator's largest reducible context sink. Across real
+ *      long-running missions, inline escalation work was the biggest avoidable
+ *      draw on the orchestrator's window — the window every later milestone
+ *      depends on.
  *
  * So every escalation is SIZE-GATED here:
  *   - trivial      → route "inline". One additive entry in one file (an enum

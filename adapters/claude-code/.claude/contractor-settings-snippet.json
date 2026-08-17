@@ -3,7 +3,7 @@
 
   "//PostToolUse": "Routes every edit to its owning area and appends it to the armed mission's queue. Inert outside a mission: no flag, or a missionStatus that is not 'active', and it no-ops. It never blocks and never fails a tool call.",
 
-  "//SessionStart": "Injects the mission rehydration brief (<=6KB) whenever a mission is armed and active. This is the whole point of the brief: a fresh window inherits position AND knowledge for ~1.5k tokens instead of re-deriving it from source, which measured 104-132k per session. Silent when no mission is running.",
+  "//SessionStart": "Injects the mission rehydration brief (<=6KB) whenever a mission is armed and active. This is the whole point of the brief: a fresh window inherits position AND knowledge for ~1.5k tokens instead of re-deriving it from source, which costs orders of magnitude more. Silent when no mission is running.",
 
   "hooks": {
     "PostToolUse": [
