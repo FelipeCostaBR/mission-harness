@@ -1,0 +1,21 @@
+{
+  "//": "Merge these hooks into your .claude/settings.json. Do NOT replace the file — you almost certainly have hooks of your own.",
+
+  "//PostToolUse": "Routes every edit to its owning area and appends it to the armed mission's queue. Inert outside a mission: no flag, or a missionStatus that is not 'active', and it no-ops. It never blocks and never fails a tool call.",
+
+  "//SessionStart": "Injects the mission rehydration brief (<=6KB) whenever a mission is armed and active. This is the whole point of the brief: a fresh window inherits position AND knowledge for ~1.5k tokens instead of re-deriving it from source, which measured 104-132k per session. Silent when no mission is running.",
+
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [{ "type": "command", "command": "contractor route" }]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [{ "type": "command", "command": "contractor brief --only-active" }]
+      }
+    ]
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "name": "contractor-harness",
+  "version": "0.1.0",
+  "description": "Contract-first multi-agent build harness. Define \"done\" as a machine-checkable contract before any code, fan the work out to path-scoped worker seats, and have a fresh adversarial seat adjudicate every claim.",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "contractor": "./src/cli.mjs"
+  },
+  "exports": {
+    ".": "./src/index.mjs",
+    "./rules/*": "./src/rules/*.mjs"
+  },
+  "files": [
+    "src",
+    "prompts",
+    "adapters",
+    "templates",
+    "docs",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test src/rules/*.test.mjs src/io/*.test.mjs",
+    "doctor": "node ./src/cli.mjs doctor"
+  },
+  "keywords": [
+    "agents",
+    "multi-agent",
+    "orchestration",
+    "llm",
+    "harness",
+    "validation",
+    "claude",
+    "codex",
+    "ai-coding"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FelipeCostaBR/contractor.git"
+  },
+  "homepage": "https://github.com/FelipeCostaBR/contractor#readme",
+  "bugs": {
+    "url": "https://github.com/FelipeCostaBR/contractor/issues"
+  }
+}

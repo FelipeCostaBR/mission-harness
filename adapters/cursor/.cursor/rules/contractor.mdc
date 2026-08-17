@@ -1,0 +1,74 @@
+---
+description: Contractor — run a specification as a contract-first multi-agent mission
+globs:
+alwaysApply: false
+---
+
+# Contractor missions
+
+When asked to build a specification end-to-end, run it as a **mission** rather
+than editing files directly.
+
+**Nothing is built until a validation contract exists and a human has approved
+it.** The contract defines "done" independently of the implementation.
+
+## Load the prompt for the phase you are in
+
+```bash
+contractor prompt mission     # the loop and the standing rules
+contractor prompt plan        # phase 1 — contract + milestones, then BLOCK for approval
+contractor prompt run         # phase 2 — build
+contractor prompt validate    # phase 3 — adjudicate
+```
+
+Seat prompts: `contractor prompt seats/worker` · `seats/validator` ·
+`seats/escalation-worker` · `seats/reviewer` · `seats/simplifier`.
+
+## Before starting
+
+```bash
+contractor doctor
+```
+
+Errors mean the harness is not adapted to this repository yet. Run
+`contractor prompt init`, follow it, re-run `doctor`.
+
+## Seats in Cursor
+
+Cursor has no subagent primitive, so **you provide the context boundary**:
+
+- Keep the **orchestrator** in one chat for the whole mission.
+- Open a **new chat per worker**, pasting only that seat's prompt and payload.
+- Open a **new chat per validator**, and give it no history from the worker's
+  chat. That freshness is the entire mechanism — a validator that saw the
+  implementation is not a verifier.
+
+Do not run a validator in the same chat that wrote the code. It will agree with
+itself, and the verdict is worthless.
+
+## Never re-derive these — the CLI decides
+
+```bash
+contractor partition <milestone>   # which features may run in parallel
+contractor escalate <files…>       # inline or delegate, and the worker's grant
+contractor advance                 # advance / corrective / circuit-break
+contractor check                   # bookkeeping invariants
+contractor brief                   # the rehydration digest, for a fresh chat
+contractor own <paths…>            # which area owns a path
+```
+
+## Boundaries
+
+A worker edits **only** its area's `pathGlobs`. Anything else is an escalation:
+record it with the exact file list and stop. Run `contractor own <path>` when
+unsure.
+
+## Finish
+
+```bash
+contractor disarm <halted|gated|done> <missionDir>
+contractor status     # must print INERT
+```
+
+**`gated` is not `done`.** Any assertion that could not be verified in-harness
+bars `done` and becomes a follow-up with its exact commands.

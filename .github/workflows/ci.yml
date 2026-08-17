@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["20", "22", "24"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Rule engine tests
+        run: node --test src/rules/*.test.mjs
+
+      # The CLI is the deterministic half of the harness. If it cannot scaffold,
+      # validate and reason about a mission end-to-end, nothing downstream is
+      # trustworthy — so the smoke test drives a real repository rather than
+      # asserting the help text renders.
+      - name: CLI smoke test
+        run: bash test/cli-smoke.sh
+
+  lint-prompts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Every prompt referenced by the CLI resolves
+        run: |
+          set -euo pipefail
+          # Only the listing rows (name + a prompts/ path), not the usage footer.
+          for p in $(node src/cli.mjs prompt | awk '$2 ~ /^prompts\// {print $1}'); do
+            node src/cli.mjs prompt "$p" --raw > /dev/null
+            echo "ok  $p"
+          done
+
+      - name: No absolute paths or personal identifiers leaked
+        run: |
+          set -euo pipefail
+          if grep -rInE '/Users/|/home/[a-z]+/|C:\\\\Users' \
+               --include='*.md' --include='*.mjs' --include='*.json' \
+               . --exclude-dir=node_modules --exclude-dir=.git; then
+            echo "::error::absolute local path found"
+            exit 1
+          fi
+          echo "clean"

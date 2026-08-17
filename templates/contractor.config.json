@@ -1,0 +1,129 @@
+{
+  "version": 1,
+
+  "project": {
+    "name": "",
+    "description": ""
+  },
+
+  "paths": {
+    "missions": ".contractor/missions",
+    "specs": "docs/specs"
+  },
+
+  "//areas": [
+    "The unit of worker ownership. One area = one slug + the ONLY paths a worker",
+    "assigned to it may edit. Areas MUST be disjoint: `contractor doctor` fails if",
+    "two areas claim the same file, because the parallelism rule assumes it.",
+    "Do NOT try to cover the whole repo. Paths owned by nobody are a feature:",
+    "they force an escalation instead of letting a path-scoped worker edit a",
+    "cross-cutting surface."
+  ],
+  "areas": [],
+
+  "//surfaces": [
+    "A surface is a toolchain, not a folder. Two areas share a surface when the",
+    "same commands verify them. Split when the commands differ (a server and a",
+    "mobile app usually have separate typecheck/test/lint invocations).",
+    "`designSpec: true` makes the milestone require a design spec before any UI",
+    "worker runs, and mounts it into the worker and the validator."
+  ],
+  "surfaces": {},
+
+  "//gates": [
+    "The milestone integration gate. This is the check that is NOT delegated and",
+    "NOT judgement-based, and it is the reason a milestone can be trusted.",
+    "Per-area tests structurally cannot see breakage that spans the repo: a type",
+    "graph, an exhaustive registry, a generated client, a cross-source consistency",
+    "suite. Every command must exit 0 before a milestone advances.",
+    "`pre` runs first — put cache-busters here. An incremental typecheck with a",
+    "warm build cache skips re-checking touched files and reports a FALSE green."
+  ],
+  "gates": {
+    "pre": [],
+    "integration": []
+  },
+
+  "//protectedPaths": [
+    "Paths a worker may never edit. Touching one is an ESCALATION: the orchestrator",
+    "either applies it inline (only for a single additive entry) or delegates it to",
+    "a dedicated worker whose output a FRESH validator reviews.",
+    "`alwaysDelegate: true` forces the delegated route regardless of size — use it",
+    "for anything whose blast radius is wide enough to want an adversarial read",
+    "every single time.",
+    "`companionGlobs` are extra paths the delegated worker needs (a migrations dir",
+    "beside a schema file, a generated-types dir beside its source)."
+  ],
+  "protectedPaths": [],
+
+  "//testGlobs": "Where tests live. Granted to every delegated escalation worker.",
+  "testGlobs": [],
+
+  "//additivePairs": [
+    "Two-file shapes that count as ONE trivial additive change, so they stay",
+    "inline instead of costing a worker spawn. The classic case is an ORM schema",
+    "file plus the migration generated from it: they are inherently one change and",
+    "splitting them across seats invites drift."
+  ],
+  "additivePairs": [],
+
+  "//seats": [
+    "Who does what. `tier` is abstract (economy | standard | frontier) and resolves",
+    "through models{} below, so the same config runs on any provider.",
+    "The validator MUST be readOnly. A validator that can edit is not a verifier:",
+    "it will quietly fix what it was asked to judge, and the verdict becomes",
+    "worthless. See docs/models.md for why the orchestrator and validator are the",
+    "two seats worth paying for."
+  ],
+  "seats": {
+    "orchestrator": { "tier": "frontier", "runtime": "session" },
+    "worker": { "tier": "standard", "runtime": "subagent" },
+    "validator": { "tier": "frontier", "runtime": "subagent", "readOnly": true },
+    "reviewer": { "tier": "frontier", "runtime": "subagent", "readOnly": true }
+  },
+
+  "//models": [
+    "Tier -> concrete model id, per runtime. Leave a runtime out and the tier name",
+    "passes through literally, which is what runtimes with their own tier aliases",
+    "want. Keep this the ONLY place model ids appear, so a model upgrade is a",
+    "one-line change."
+  ],
+  "models": {
+    "frontier": { "claude-code": "opus", "default": "claude-opus-5" },
+    "standard": { "claude-code": "sonnet", "default": "claude-sonnet-5" },
+    "economy": { "claude-code": "haiku", "default": "claude-haiku-4-5-20251001" }
+  },
+
+  "policy": {
+    "//maxCorrectiveRounds": "Two failed rounds means stuck, not unlucky. A third round reliably just burns tokens.",
+    "maxCorrectiveRounds": 2,
+    "//escalateSeatAfterRounds": "Spend the frontier tier on the LAST attempt before the breaker trips, not the first.",
+    "escalateSeatAfterRounds": 1,
+    "parallelWorkers": true,
+    "simplifyPass": true,
+    "commitPerFeature": true,
+    "commitSubjectTemplate": "feat({area}): {feature}"
+  },
+
+  "//constraints": [
+    "Project-wide rules every worker must honour, in plain language. These are",
+    "injected into every seat prompt and auto-added to the contract as default",
+    "assertions. Put the rules a newcomer would break here: logging conventions,",
+    "copy restrictions, banned imports, licence headers."
+  ],
+  "constraints": [],
+
+  "//liveGate": [
+    "Optional verification that can only happen OUTSIDE the harness: a device run,",
+    "a staging deploy, a manual QA pass. The runner's exit code is the contract —",
+    "0 passes, `skipExitCode` means 'no runner available' (a SKIP, never a",
+    "regression, and never a false pass), anything else fails.",
+    "A mission with an unverified live gate is recorded `gated`, NOT `done`."
+  ],
+  "liveGate": {
+    "enabled": false,
+    "runner": "",
+    "skipExitCode": 78,
+    "areas": {}
+  }
+}

@@ -1,0 +1,143 @@
+{
+  "//": "A worked example: a TypeScript monorepo with a server app, a web app, and shared packages. Yours will differ — this shows the SHAPE, not values to copy. Generate your real config with `contractor prompt init`.",
+
+  "version": 1,
+
+  "project": {
+    "name": "acme",
+    "description": "Monorepo: Next.js server + React web + shared packages"
+  },
+
+  "paths": {
+    "missions": ".contractor/missions",
+    "specs": "docs/specs"
+  },
+
+  "//areas": "Derived from the seams the repo already has: one per bounded context, with its tests. Disjoint, and deliberately NOT covering everything.",
+  "areas": [
+    {
+      "slug": "billing",
+      "pathGlobs": ["apps/server/src/billing/**", "apps/server/test/billing/**"],
+      "surface": "server",
+      "docs": "apps/server/src/billing/README.md",
+      "publicApi": "apps/server/src/billing/index.ts",
+      "owns": ["subscriptions", "invoices", "payment_methods"]
+    },
+    {
+      "slug": "identity",
+      "pathGlobs": ["apps/server/src/identity/**", "apps/server/test/identity/**"],
+      "surface": "server",
+      "publicApi": "apps/server/src/identity/index.ts",
+      "owns": ["users", "sessions"]
+    },
+    {
+      "slug": "reporting",
+      "pathGlobs": ["apps/server/src/reporting/**", "apps/server/test/reporting/**"],
+      "surface": "server",
+      "publicApi": "apps/server/src/reporting/index.ts"
+    },
+    {
+      "slug": "web-billing",
+      "pathGlobs": ["apps/web/src/features/billing/**"],
+      "surface": "web"
+    },
+    {
+      "slug": "web-reporting",
+      "pathGlobs": ["apps/web/src/features/reporting/**"],
+      "surface": "web"
+    }
+  ],
+
+  "//surfaces": "Two toolchains. A worker handed the wrong one reports green having run nothing, because a filtered build command that matches no package exits 0.",
+  "surfaces": {
+    "server": {
+      "gates": ["pnpm --filter @acme/server typecheck", "pnpm --filter @acme/server lint"],
+      "designSpec": false
+    },
+    "web": {
+      "gates": ["pnpm --filter @acme/web typecheck", "pnpm --filter @acme/web lint"],
+      "designSpec": true
+    }
+  },
+
+  "//gates": "pre deletes the incremental build cache FIRST: a warm cache makes tsc skip re-checking touched files and report a false green, and SWC-stripped jest passes too.",
+  "gates": {
+    "pre": ["rm -f apps/server/tsconfig.tsbuildinfo apps/web/tsconfig.tsbuildinfo"],
+    "integration": [
+      { "cmd": "pnpm exec tsc --noEmit -p apps/server/tsconfig.json", "why": "whole-program type graph" },
+      { "cmd": "pnpm exec tsc --noEmit -p apps/web/tsconfig.json", "why": "whole-program type graph, web" },
+      { "cmd": "pnpm lint", "why": "full lint, not just import boundaries" },
+      { "cmd": "pnpm test:architecture", "why": "registry + boundary consistency suites" },
+      { "cmd": "pnpm exec depcruise --config .dependency-cruiser.js apps/server/src", "why": "import-graph boundaries" }
+    ]
+  },
+
+  "//protectedPaths": "The surfaces a path-scoped worker must never touch. core-math is alwaysDelegate because blast radius, not diff size, is what matters: a one-line change to a formula is small, and wrong is catastrophic.",
+  "protectedPaths": [
+    {
+      "glob": "packages/db/prisma/schema.prisma",
+      "reason": "database schema",
+      "companionGlobs": ["packages/db/prisma/migrations/**"]
+    },
+    { "glob": "apps/server/src/shared/**", "reason": "shared kernel" },
+    { "glob": "packages/api-client/**", "reason": "public API other apps consume", "alwaysDelegate": true },
+    { "glob": "packages/core-math/**", "reason": "shared formulas other code trusts", "alwaysDelegate": true },
+    { "glob": "apps/server/src/middleware.ts", "reason": "auth and routing edge" }
+  ],
+
+  "//unownedPaths": "Known cross-cutting paths a typical feature hits. Listed so the planner batches them into ONE early milestone instead of discovering them one at a time across five later ones.",
+  "unownedPaths": [
+    "apps/server/src/app/api/**",
+    "packages/db/**",
+    "apps/server/src/shared/**",
+    ".github/workflows/**"
+  ],
+
+  "testGlobs": ["apps/server/test/**", "apps/web/src/**/__tests__/**"],
+
+  "additivePairs": [
+    { "primary": "packages/db/prisma/schema.prisma", "generated": "packages/db/prisma/migrations/**" }
+  ],
+
+  "seats": {
+    "orchestrator": { "tier": "frontier", "runtime": "session" },
+    "worker": { "tier": "standard", "runtime": "subagent" },
+    "validator": { "tier": "frontier", "runtime": "subagent", "readOnly": true },
+    "reviewer": { "tier": "frontier", "runtime": "subagent", "readOnly": true }
+  },
+
+  "models": {
+    "frontier": { "claude-code": "opus", "default": "claude-opus-5" },
+    "standard": { "claude-code": "sonnet", "default": "claude-sonnet-5" },
+    "economy": { "claude-code": "haiku", "default": "claude-haiku-4-5-20251001" }
+  },
+
+  "policy": {
+    "maxCorrectiveRounds": 2,
+    "escalateSeatAfterRounds": 1,
+    "parallelWorkers": true,
+    "simplifyPass": true,
+    "commitPerFeature": true,
+    "commitSubjectTemplate": "feat({area}): {feature}"
+  },
+
+  "//constraints": "Specific and checkable. Harvested from the repo's own agent instructions, linter config and CONTRIBUTING guide.",
+  "constraints": [
+    "Never call console.* in apps/server/src/**; use createLogger from apps/server/src/shared/log.ts",
+    "Import the shared Prisma client from @acme/db; never construct a new PrismaClient",
+    "All DB access goes through a repository under src/<area>/data/, never a raw client call in a route handler",
+    "Prefix intentionally unused variables with _"
+  ],
+
+  "liveGate": {
+    "enabled": true,
+    "runner": "pnpm e2e --area {{area}}",
+    "skipExitCode": 78,
+    "areas": {
+      "checkout": {
+        "flows": ["e2e/checkout.spec.ts"],
+        "expectSignals": [{ "name": "purchase_completed", "min": 1 }]
+      }
+    }
+  }
+}

@@ -1,0 +1,11 @@
+node_modules/
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
+
+# Runtime state produced by the harness in a consuming repo. Missions themselves
+# SHOULD be committed (they are the audit trail); these two are machine-local.
+.contractor/.active-mission
+.contractor/**/.pending-validation.json
