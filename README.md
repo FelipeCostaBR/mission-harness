@@ -6,6 +6,15 @@ Define "done" as a machine-checkable contract *before* any code. Fan the work ou
 to path-scoped worker seats. Have a fresh, adversarial seat adjudicate every
 claim.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/mission-loop-dark.png">
+  <img alt="Six stations run clockwise from Plan through Partition, Build, Validate, Gate and Checkpoint, then back to Plan for the next milestone. Every station writes durable state into one central store of mission artifacts, which is the only memory that survives a context window. Plan is highlighted as the gate a human approves before any code is written." src="docs/diagrams/mission-loop.png">
+</picture>
+
+*Work advances clockwise. The dashed spokes are the write-backs: every station
+records what it learned into the mission's artifacts, which is the only memory
+that survives a context window.*
+
 ```bash
 npm install -g contractor-harness
 cd your-project
