@@ -69,26 +69,40 @@ const listJson = (dir) =>
  * list "the files I touched" reliably invents, merges or omits them. A regex over
  * the handoff's own prose is dumber and more truthful.
  */
-const PATH_RX = /(?:^|[\s"'`(\[])([\w.@-]+(?:\/[\w.@-]+)+\.[A-Za-z0-9]{1,8})/g
+const PATH_RX = /(?:^|[\s"'`(\[])([\w.@-]+(?:\/[\w.@()\[\]-]+)+\.[A-Za-z0-9]{1,8})/g
 
 export function filesMentionedIn(handoff) {
-  const text = [...(handoff?.completed ?? []), ...(handoff?.incomplete ?? [])].join("\n")
+  const text = [...(handoff?.completed ?? []), ...(handoff?.incomplete ?? [])]
+    .filter((x) => typeof x === "string")
+    .join("\n")
   const out = new Set()
   for (const m of text.matchAll(PATH_RX)) out.add(m[1])
   return [...out]
 }
 
-/** Read every handoff in the mission, returning the shape `rehydrationPlan` wants. */
+/**
+ * Read every handoff in the mission, returning the shape `rehydrationPlan` wants.
+ *
+ * Identity: the handoff's `feature` field, else its filename stem. An
+ * escalation worker's `handoffs/ESC-<id>.json` is ALWAYS keyed by its stem, so
+ * the rehydration rule's /^ESC-/ skip holds even when the worker wrote the bare
+ * escalation id into `feature`.
+ *
+ * Trail: the structured `filesChanged[]` first (exact), then whatever paths the
+ * prose names. An unparseable handoff still counts as present.
+ */
 export function readArtifacts(root, missionDir) {
   const p = missionPaths(root, missionDir)
   const handoffFeatures = []
   const handoffIndex = {}
   const handoffFiles = listJson(p.handoffs)
   for (const f of handoffFiles) {
+    const stem = f.replace(/\.json$/, "")
     const h = readJson(join(p.handoffs, f), null)
-    const feature = h?.feature ?? f.replace(/\.json$/, "")
+    const feature = !/^ESC-/.test(stem) && typeof h?.feature === "string" && h.feature ? h.feature : stem
     handoffFeatures.push(feature)
-    const files = filesMentionedIn(h)
+    const structured = Array.isArray(h?.filesChanged) ? h.filesChanged.filter((x) => typeof x === "string" && x) : []
+    const files = [...new Set([...structured, ...filesMentionedIn(h)])]
     if (files.length) handoffIndex[feature] = files
   }
   return {

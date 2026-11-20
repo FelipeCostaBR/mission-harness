@@ -462,7 +462,8 @@ function cmdCheck(args) {
   const missionDir = resolveMission(root, args[0])
   const state = requireState(root, missionDir)
   const artifacts = readArtifacts(root, missionDir)
-  const findings = checkBookkeeping(state, { handoffFiles: artifacts.handoffFiles })
+  const { config } = loadConfig()
+  const findings = checkBookkeeping(state, { handoffFiles: artifacts.handoffFiles, surfaces: Object.keys(config.surfaces ?? {}) })
 
   const p = missionPaths(root, missionDir)
   for (const f of artifacts.handoffFiles) {

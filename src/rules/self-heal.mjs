@@ -1,21 +1,21 @@
 /**
- * self-heal.mjs — the milestone-boundary decision rule.
+ * self-heal.mjs — the missions-harness milestone-boundary decision rule.
  *
- * This is the SINGLE SOURCE OF TRUTH for what the orchestrator does when a
- * milestone finishes validating. The prose in `prompts/orchestrator/validate.md`
- * says WHEN to call it; this module decides WHAT happens, deterministically.
+ * This is the SINGLE SOURCE OF TRUTH for what `mission-validate` does at a
+ * milestone boundary (SKILL.md steps 4/5 + invariant 11). It was previously
+ * only prose; extracting it here makes the decision deterministic and
+ * regression-guarded (`self-heal.test.mjs`, run via `node --test`).
  *
- * Why it is a module and not a paragraph: "advance / try again / stop and ask a
- * human" is the single most consequential branch in the whole harness, and a
- * model asked to re-derive it under context pressure will eventually rationalise
- * a third corrective round. A tested rule cannot.
- *
- * Pure: no I/O, no Date.now, no randomness.
- *
+ * Pure: no I/O, no Date.now, no randomness. Given the milestone's validation
+ * outcome + how many corrective rounds it has already spent, it returns the
+ * next action. Keep the mission-validate prose and this rule in agreement.
+ */
+
+/**
  * @typedef {Object} SelfHealState
  * @property {boolean} assertionsAllPassing  every bound assertion is `passing`
- * @property {number}  boundaryViolations    count of out-of-area edits (hard blocker)
- * @property {number}  missingDefaults       count of unmet default assertions (hard blocker)
+ * @property {number}  boundaryViolations    count of boundary violations (hard blocker)
+ * @property {number}  missingDefaults       count of missing default assertions (hard blocker)
  * @property {boolean} gateGreen             the deterministic integration gate passed
  * @property {number}  correctiveRounds      rounds already spent on THIS milestone
  * @property {number}  [maxRounds=2]         circuit-breaker cap
@@ -38,10 +38,10 @@ export function decideSelfHeal(state) {
     gateGreen,
     correctiveRounds,
     maxRounds = 2,
-  } = state ?? {}
+  } = state
 
   // Validate inputs so a malformed call fails loudly rather than silently
-  // advancing on garbage — the exact bug class this module exists to prevent.
+  // advancing on garbage (the kind of bug this whole module exists to prevent).
   if (typeof assertionsAllPassing !== "boolean")
     throw new TypeError("assertionsAllPassing must be boolean")
   if (typeof gateGreen !== "boolean") throw new TypeError("gateGreen must be boolean")
@@ -54,21 +54,21 @@ export function decideSelfHeal(state) {
   if (!Number.isInteger(maxRounds) || maxRounds < 1)
     throw new TypeError("maxRounds must be a positive integer")
 
-  // ADVANCE only when EVERYTHING is clean: every bound assertion passing, zero
-  // boundary violations, zero missing defaults, AND the integration gate green.
-  // Boundary violations and missing defaults are HARD blockers, not notes — they
-  // block even if the assertion verdicts read otherwise.
+  // ADVANCE only when EVERYTHING is clean (mission-validate step 5): every
+  // bound assertion passing, zero boundaryViolations, zero missingDefaults, AND
+  // the integration gate green. boundaryViolations / missingDefaults are hard
+  // blockers, not notes (invariants 9 + 8) — so they block advance even if the
+  // assertion verdicts read otherwise.
   const clean =
-    assertionsAllPassing && boundaryViolations === 0 && missingDefaults === 0 && gateGreen
+    assertionsAllPassing &&
+    boundaryViolations === 0 &&
+    missingDefaults === 0 &&
+    gateGreen
   if (clean) {
-    return {
-      action: "advance",
-      reason:
-        "all bound assertions passing, no boundary/default violations, integration gate green",
-    }
+    return { action: "advance", reason: "all bound assertions passing, no boundary/default violations, integration gate green" }
   }
 
-  // Not clean → self-heal. Under the cap, scope a corrective round.
+  // Not clean → self-heal (step 4). Under the cap, scope a corrective round.
   if (correctiveRounds < maxRounds) {
     return {
       action: "corrective",
@@ -76,12 +76,11 @@ export function decideSelfHeal(state) {
     }
   }
 
-  // At/over the cap → circuit-break. Never a third round: a milestone that fails
-  // validation twice is stuck (agents arguing, or blindly re-editing the same
-  // file to force green), and a third try reliably just burns tokens.
+  // At/over the cap → circuit-break (invariant 11): never a third round. Commit
+  // the stuck state to a debug branch, set missionStatus halted, flag the human.
   return {
     action: "circuit-break",
-    reason: `corrective rounds exhausted (${correctiveRounds} >= ${maxRounds}); checkpoint to a debug branch, set missionStatus halted, escalate to the human with the failing-verdict + gate evidence`,
+    reason: `corrective rounds exhausted (${correctiveRounds} >= ${maxRounds}); checkpoint to debug/<feature>-<milestone>-stuck, set missionStatus halted, escalate to the human with the failing-verdict + gate evidence`,
   }
 }
 

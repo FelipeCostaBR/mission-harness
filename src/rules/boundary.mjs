@@ -1,32 +1,35 @@
 /**
- * boundary.mjs — the out-of-area edit rule.
+ * boundary.mjs — the missions-harness out-of-module boundary rule (B5).
  *
- * A worker seat may edit ONLY files inside its area's `pathGlobs`. The validator
- * reports any stray path as a hard-blocking `boundaryViolations[]`. This is the
- * tested path-membership half of that check; the other half (imports crossing an
- * area line) belongs to whatever import-graph linter your repo already runs.
+ * A worker may edit ONLY files inside its module's `pathGlobs`. The
+ * `module-validator` reports any stray path as a hard-blocking
+ * `boundaryViolations[]`. This is the tested path-membership half of that check
+ * (the import half belongs to the project's own architecture tests, run by the
+ * integration gate). Single
+ * source of truth; `node --test`-guarded by `boundary.test.mjs`.
  *
  * Pure: no I/O.
  *
- * ⚠️ WHY MEMBERSHIP DOES NOT REUSE `globBase` FROM partition.mjs.
- * An earlier version derived a glob's literal prefix and tested
+ * ⚠️ WHY THIS NO LONGER USES `globBase` FROM partition.mjs (fixed 2026-08-14).
+ * It used to derive a glob's literal prefix with `globBase` and test
  * `p === base || p.startsWith(base + "/")`. That is correct for a trailing-`**`
- * glob but WRONG when `**` sits mid-pattern: the base of `src/**\/__tests__/**`
- * keeps the wildcard, so no real path can ever start with it and every legitimate
- * test file is reported as a violation. That matters because `boundaryViolations`
- * is a HARD BLOCKER and `escalation-route` GENERATES exactly that glob shape, so a
- * clean milestone could be halted by a pure false positive.
+ * glob but WRONG for a glob whose `**` sits mid-pattern: `globBase` leaves the
+ * wildcard in place, so `apps/mobile/**\/__tests__/**` produced the base
+ * `apps/mobile/**\/__tests__`, which no real path can ever start with — and every
+ * legitimate test file was reported as a violation. That mattered because
+ * `boundaryViolations` is a HARD BLOCKER at validation and `routeEscalation`
+ * GENERATES exactly that glob shape for every escalation, so a clean milestone
+ * could be halted by a false positive.
  *
- * `globBase` is deliberately left alone in partition.mjs: there it only feeds
- * `globsOverlap`, where a too-short base over-detects overlap and therefore fails
+ * partition.mjs keeps `globBase` for `globsOverlap` only, where it now cuts at
+ * the FIRST wildcard segment: a too-short base over-detects overlap and so fails
  * SAFE (it forces the serial path). Membership needs the opposite — real
  * segment-wise matching — so the two diverge on purpose.
  */
 
 /** Regex metacharacters that must be escaped in a glob segment. `*` is excluded:
- *  it is the one character we translate rather than escape. Real paths routinely
- *  contain literal parens (Next.js `(authed)`, Expo `(tabs)`), so this is
- *  load-bearing, not decorative. */
+ *  it is the one character we translate rather than escape. Note real paths here
+ *  contain literal parens (`(authed)`, `(tabs)`, `(site)`), so escaping is load-bearing. */
 const RX_META = /[.+?^${}()|[\]\\]/g
 
 /** Does one path segment match one glob segment (`*` = any run of non-`/`)? */
@@ -62,18 +65,40 @@ function matchFrom(pathSegments, i, globSegments, j) {
 const segmentsOf = (s) => String(s).split("/").filter((seg) => seg.length > 0)
 
 /**
- * Is a single path within any of the allowed globs?
- *  - A glob containing a wildcard is matched segment-wise (`**` spans segments).
- *  - A `dir/**` glob also matches `dir` itself.
- *  - A wildcard-free glob keeps the prefix rule (`p === g`, or under `g + "/"`),
- *    so a bare directory grant and a specific-file grant both behave as written.
+ * A changed path as the grant sees it: repo-relative. A worker (a lane worker
+ * above all) may record `./`-prefixed or absolute lane paths; compared raw,
+ * every one of those reads as a hard-blocking violation. A leading `./` is
+ * stripped, and so is `root` (the mission or lane worktree's absolute root)
+ * when one is given. Anything else is left alone, so an absolute path under
+ * some OTHER root still falls outside every repo-relative glob.
+ * @param {string} p
+ * @param {string} [root]
  */
-export function pathWithinGlobs(p, allowedGlobs) {
-  if (typeof p !== "string" || p.length === 0)
-    throw new TypeError("path must be a non-empty string")
+export function normalizeChangedPath(p, root) {
+  let s = String(p)
+  if (typeof root === "string" && root.length > 0) {
+    const prefix = root.endsWith("/") ? root : `${root}/`
+    if (s.startsWith(prefix)) s = s.slice(prefix.length)
+  }
+  while (s.startsWith("./")) s = s.slice(2)
+  return s
+}
+
+/** Is a single path within any of the allowed globs?
+ *  - The path is normalised first (`normalizeChangedPath`): a leading `./` is
+ *    stripped, and `root` too when given.
+ *  - A glob containing a wildcard is matched segment-wise (`**` spans segments).
+ *  - A `dir/**` glob also matches `dir` itself, as it always has.
+ *  - A wildcard-free glob keeps the original prefix rule (`p === g`, or under
+ *    `g + "/"`), so a bare directory grant and a specific-file grant are both
+ *    unchanged. */
+export function pathWithinGlobs(rawPath, allowedGlobs, root) {
+  if (typeof rawPath !== "string" || rawPath.length === 0) throw new TypeError("path must be a non-empty string")
+  const p = normalizeChangedPath(rawPath, root)
+  if (p.length === 0) throw new TypeError(`path ${JSON.stringify(rawPath)} is empty once normalised`)
   const pathSegments = segmentsOf(p)
   for (const glob of allowedGlobs) {
-    const g = String(glob)
+    const g = normalizeChangedPath(glob)
     if (!g.includes("*")) {
       if (p === g || p.startsWith(g + "/")) return true
       continue
@@ -86,20 +111,24 @@ export function pathWithinGlobs(p, allowedGlobs) {
 }
 
 /**
- * Return the changed paths that fall OUTSIDE the allowed globs. An empty array
- * means the worker stayed in bounds.
- * @param {string[]} changedPaths  the worker's edited files (repo-relative)
- * @param {string[]} allowedGlobs  the area's pathGlobs
- * @returns {string[]} the stray paths (sorted, deduped)
+ * Return the changed paths that fall OUTSIDE the allowed globs (the boundary
+ * violations). Empty array means the worker stayed in bounds.
+ * @param {string[]} changedPaths  the worker's edited files
+ * @param {string[]} allowedGlobs  the module's pathGlobs
+ * @param {{root?: string}} [options]  root: the mission or lane worktree's
+ *        absolute root, stripped from an absolute changed path before matching
+ * @returns {string[]} the stray paths, normalised to repo-relative (sorted, deduped)
  */
-export function boundaryViolations(changedPaths, allowedGlobs) {
+export function boundaryViolations(changedPaths, allowedGlobs, options = {}) {
   if (!Array.isArray(changedPaths)) throw new TypeError("changedPaths must be an array")
   if (!Array.isArray(allowedGlobs)) throw new TypeError("allowedGlobs must be an array")
+  const root = options && typeof options.root === "string" ? options.root : undefined
+  const paths = changedPaths.map((p) => (typeof p === "string" ? normalizeChangedPath(p, root) : p))
   if (allowedGlobs.length === 0) {
     // No ownership declared → every edit is out of bounds (conservative).
-    return [...new Set(changedPaths)].sort()
+    return [...new Set(paths)].sort()
   }
-  const stray = changedPaths.filter((p) => !pathWithinGlobs(p, allowedGlobs))
+  const stray = paths.filter((p) => !pathWithinGlobs(p, allowedGlobs))
   return [...new Set(stray)].sort()
 }
 

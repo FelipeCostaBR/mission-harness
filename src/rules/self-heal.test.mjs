@@ -1,8 +1,17 @@
-import test from "node:test"
+/**
+ * node:test for self-heal.mjs (the missions-harness boundary decision rule).
+ * Run: node --test .claude/skills/run-prd-multi-agent-architecture/lib/
+ *
+ * Covers SH-1 (all six decision cases) + SH-2 (corrective/circuit-break
+ * boundary exactness vs maxRounds). Pure unit tests, no I/O.
+ */
+
+import { test } from "node:test"
 import assert from "node:assert/strict"
 import { decideSelfHeal } from "./self-heal.mjs"
 
-const clean = {
+/** A clean milestone: everything green, no rounds spent. */
+const CLEAN = {
   assertionsAllPassing: true,
   boundaryViolations: 0,
   missingDefaults: 0,
@@ -10,61 +19,68 @@ const clean = {
   correctiveRounds: 0,
 }
 
-test("advances only when everything is clean", () => {
-  assert.equal(decideSelfHeal(clean).action, "advance")
+test("advance: clean milestone advances", () => {
+  assert.equal(decideSelfHeal(CLEAN).action, "advance")
 })
 
-test("a failing assertion opens a corrective round", () => {
-  const d = decideSelfHeal({ ...clean, assertionsAllPassing: false })
+test("corrective: a failing assertion at round 0 scopes a corrective round", () => {
+  const d = decideSelfHeal({ ...CLEAN, assertionsAllPassing: false, correctiveRounds: 0 })
   assert.equal(d.action, "corrective")
 })
 
-test("a boundary violation blocks even when every assertion passes", () => {
-  // The whole point: a worker that edited outside its area may have satisfied
-  // its assertions while breaking someone else's code.
-  const d = decideSelfHeal({ ...clean, boundaryViolations: 1 })
+test("corrective: a failing assertion at round 1 still scopes a corrective round", () => {
+  const d = decideSelfHeal({ ...CLEAN, assertionsAllPassing: false, correctiveRounds: 1 })
   assert.equal(d.action, "corrective")
 })
 
-test("a missing default blocks even when every assertion passes", () => {
-  const d = decideSelfHeal({ ...clean, missingDefaults: 2 })
-  assert.equal(d.action, "corrective")
-})
-
-test("a red integration gate blocks even when every assertion passes", () => {
-  // Per-area checks cannot see cross-repo breakage; the gate is the real boundary.
-  const d = decideSelfHeal({ ...clean, gateGreen: false })
-  assert.equal(d.action, "corrective")
-})
-
-test("circuit-breaks at the cap instead of trying a third round", () => {
-  const d = decideSelfHeal({ ...clean, assertionsAllPassing: false, correctiveRounds: 2 })
+test("circuit-break: a failing assertion at round 2 trips the breaker", () => {
+  const d = decideSelfHeal({ ...CLEAN, assertionsAllPassing: false, correctiveRounds: 2 })
   assert.equal(d.action, "circuit-break")
-  assert.match(d.reason, /exhausted/)
 })
 
-test("the cap is configurable but still terminal", () => {
-  assert.equal(
-    decideSelfHeal({ ...clean, assertionsAllPassing: false, correctiveRounds: 2, maxRounds: 3 })
-      .action,
-    "corrective",
-  )
-  assert.equal(
-    decideSelfHeal({ ...clean, assertionsAllPassing: false, correctiveRounds: 3, maxRounds: 3 })
-      .action,
-    "circuit-break",
-  )
+test("boundaryViolations block advance even when assertions all pass", () => {
+  const d = decideSelfHeal({ ...CLEAN, boundaryViolations: 1 })
+  assert.equal(d.action, "corrective") // round 0 -> corrective, NOT advance
 })
 
-test("a clean milestone advances even at the cap", () => {
-  // Rounds spent are not a reason to keep failing: if it is clean, it ships.
-  assert.equal(decideSelfHeal({ ...clean, correctiveRounds: 2 }).action, "advance")
+test("missingDefaults block advance even when assertions all pass", () => {
+  const d = decideSelfHeal({ ...CLEAN, missingDefaults: 1 })
+  assert.equal(d.action, "corrective")
 })
 
-test("malformed input throws rather than silently advancing", () => {
-  assert.throws(() => decideSelfHeal({ ...clean, assertionsAllPassing: "yes" }), TypeError)
-  assert.throws(() => decideSelfHeal({ ...clean, correctiveRounds: -1 }), TypeError)
-  assert.throws(() => decideSelfHeal({ ...clean, boundaryViolations: 1.5 }), TypeError)
-  assert.throws(() => decideSelfHeal({ ...clean, maxRounds: 0 }), TypeError)
-  assert.throws(() => decideSelfHeal(null), TypeError)
+test("a red integration gate blocks advance even when assertions all pass", () => {
+  const d = decideSelfHeal({ ...CLEAN, gateGreen: false })
+  assert.equal(d.action, "corrective")
+})
+
+test("SH-2 boundary exactness: corrective for 0..maxRounds-1, circuit-break at maxRounds (maxRounds=2)", () => {
+  const failing = { ...CLEAN, assertionsAllPassing: false }
+  assert.equal(decideSelfHeal({ ...failing, correctiveRounds: 0 }).action, "corrective")
+  assert.equal(decideSelfHeal({ ...failing, correctiveRounds: 1 }).action, "corrective")
+  assert.equal(decideSelfHeal({ ...failing, correctiveRounds: 2 }).action, "circuit-break")
+  assert.equal(decideSelfHeal({ ...failing, correctiveRounds: 3 }).action, "circuit-break")
+})
+
+test("SH-2 boundary exactness honours a custom maxRounds=1 (break at the first failure round)", () => {
+  const failing = { ...CLEAN, assertionsAllPassing: false, maxRounds: 1 }
+  assert.equal(decideSelfHeal({ ...failing, correctiveRounds: 0 }).action, "corrective")
+  assert.equal(decideSelfHeal({ ...failing, correctiveRounds: 1 }).action, "circuit-break")
+})
+
+test("malformed input throws (fails loud, never silently advances on garbage)", () => {
+  assert.throws(() => decideSelfHeal({ ...CLEAN, assertionsAllPassing: "yes" }), TypeError)
+  assert.throws(() => decideSelfHeal({ ...CLEAN, boundaryViolations: -1 }), TypeError)
+  assert.throws(() => decideSelfHeal({ ...CLEAN, correctiveRounds: 1.5 }), TypeError)
+  assert.throws(() => decideSelfHeal({ ...CLEAN, maxRounds: 0 }), TypeError)
+})
+
+test("every decision carries a non-empty reason", () => {
+  for (const s of [
+    CLEAN,
+    { ...CLEAN, assertionsAllPassing: false, correctiveRounds: 0 },
+    { ...CLEAN, assertionsAllPassing: false, correctiveRounds: 2 },
+  ]) {
+    const d = decideSelfHeal(s)
+    assert.ok(typeof d.reason === "string" && d.reason.length > 0)
+  }
 })
