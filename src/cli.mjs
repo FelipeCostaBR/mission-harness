@@ -26,6 +26,7 @@ import {
   seatTable,
   CONFIG_FILENAME,
   STATE_DIRNAME,
+  DEFAULT_CONFIG,
 } from "./config.mjs"
 import { arm, disarm, check } from "./io/flag.mjs"
 import {
@@ -841,6 +842,8 @@ const USAGE = `${bold("mission")} — contract-first multi-agent build harness
 ${bold("Setup")}
   init [--force]              scaffold ${CONFIG_FILENAME} + ${STATE_DIRNAME}/
   doctor                      validate the config against this repository
+  migrate <agent-routing.json> [--write]
+                              draft the config from an older harness's module registry
   install [adapter]           wire the prompts into an agent runtime
   prompt [name] [--raw]       print a seat prompt (works with ANY model)
 
@@ -982,6 +985,47 @@ async function cmdCompact() {
   runStateCLI([abs, "append", "compactions", JSON.stringify(item)])
 }
 
+/**
+ * `mission migrate <agent-routing.json> [--write]`: draft a mission.config.json
+ * from the module registry the pre-package harness copies used. Reads both
+ * shapes — `modules` as an object keyed by slug or as an array of `{slug}` —
+ * skips `$`-keys and retired modules, and turns `sharedKernel` groups into
+ * protectedPaths. Prints the draft unless --write; `mission doctor` then checks it.
+ */
+function cmdMigrate(args) {
+  const file = args.find((a) => !a.startsWith("--"))
+  if (!file) throw new UserError("usage: mission migrate <agent-routing.json> [--write]")
+  const routing = readJson(resolve(file), null)
+  if (!routing || typeof routing !== "object") throw new UserError(`${file} is not a JSON object`)
+  const mods = Array.isArray(routing.modules)
+    ? routing.modules.map((m) => [m?.slug, m])
+    : Object.entries(routing.modules ?? {})
+  const areas = []
+  const surfaces = {}
+  for (const [slug, m] of mods) {
+    if (!slug || slug.startsWith("$") || !m || typeof m !== "object" || m.retired) continue
+    const surface = typeof m.surface === "string" ? m.surface : "default"
+    surfaces[surface] = surfaces[surface] ?? { gates: [], designSpec: false }
+    areas.push({ slug, pathGlobs: Array.isArray(m.pathGlobs) ? m.pathGlobs : [], surface })
+  }
+  const protectedPaths = []
+  for (const [name, globs] of Object.entries(routing.sharedKernel ?? {})) {
+    if (name.startsWith("$") || !Array.isArray(globs)) continue
+    for (const glob of globs) protectedPaths.push({ glob, reason: name })
+  }
+  const { root, configPath } = findProjectRoot()
+  const base = configPath ? readJson(configPath, {}) : {}
+  const draft = { ...DEFAULT_CONFIG, ...base, areas, surfaces: { ...surfaces, ...(base.surfaces ?? {}) }, protectedPaths }
+  if (args.includes("--write")) {
+    const target = join(root, CONFIG_FILENAME)
+    writeJson(target, draft)
+    out(`${green("✓")} wrote ${relative(process.cwd(), target) || CONFIG_FILENAME}: ${areas.length} area(s), ${protectedPaths.length} protected path(s)`)
+    out(dim("  fill in each surface's gates, then run `mission doctor`"))
+    return
+  }
+  out(JSON.stringify(draft, null, 2))
+}
+
 function emit(r) {
   if (r.stdout) process.stdout.write(r.stdout)
   if (r.stderr) process.stderr.write(r.stderr)
@@ -1013,6 +1057,8 @@ async function main() {
       return cmdCommits(args)
     case "compact":
       return cmdCompact(args)
+    case "migrate":
+      return cmdMigrate(args)
     case "disarm":
       return cmdDisarm(args)
     case "status":
