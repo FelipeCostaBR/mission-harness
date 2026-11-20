@@ -1,10 +1,10 @@
 ---
-description: Contractor — run a specification as a contract-first multi-agent mission
+description: Mission Harness — run a specification as a contract-first multi-agent mission
 globs:
 alwaysApply: false
 ---
 
-# Contractor missions
+# Mission Harness missions
 
 When asked to build a specification end-to-end, run it as a **mission** rather
 than editing files directly.
@@ -15,23 +15,23 @@ it.** The contract defines "done" independently of the implementation.
 ## Load the prompt for the phase you are in
 
 ```bash
-contractor prompt mission     # the loop and the standing rules
-contractor prompt plan        # phase 1 — contract + milestones, then BLOCK for approval
-contractor prompt run         # phase 2 — build
-contractor prompt validate    # phase 3 — adjudicate
+mission prompt mission     # the loop and the standing rules
+mission prompt plan        # phase 1 — contract + milestones, then BLOCK for approval
+mission prompt run         # phase 2 — build
+mission prompt validate    # phase 3 — adjudicate
 ```
 
-Seat prompts: `contractor prompt seats/worker` · `seats/validator` ·
+Seat prompts: `mission prompt seats/worker` · `seats/validator` ·
 `seats/escalation-worker` · `seats/reviewer` · `seats/simplifier`.
 
 ## Before starting
 
 ```bash
-contractor doctor
+mission doctor
 ```
 
 Errors mean the harness is not adapted to this repository yet. Run
-`contractor prompt init`, follow it, re-run `doctor`.
+`mission prompt init`, follow it, re-run `doctor`.
 
 ## Seats in Cursor
 
@@ -49,25 +49,25 @@ itself, and the verdict is worthless.
 ## Never re-derive these — the CLI decides
 
 ```bash
-contractor partition <milestone>   # which features may run in parallel
-contractor escalate <files…>       # inline or delegate, and the worker's grant
-contractor advance                 # advance / corrective / circuit-break
-contractor check                   # bookkeeping invariants
-contractor brief                   # the rehydration digest, for a fresh chat
-contractor own <paths…>            # which area owns a path
+mission partition <milestone>   # which features may run in parallel
+mission escalate <files…>       # inline or delegate, and the worker's grant
+mission advance                 # advance / corrective / circuit-break
+mission check                   # bookkeeping invariants
+mission brief                   # the rehydration digest, for a fresh chat
+mission own <paths…>            # which area owns a path
 ```
 
 ## Boundaries
 
 A worker edits **only** its area's `pathGlobs`. Anything else is an escalation:
-record it with the exact file list and stop. Run `contractor own <path>` when
+record it with the exact file list and stop. Run `mission own <path>` when
 unsure.
 
 ## Finish
 
 ```bash
-contractor disarm <halted|gated|done> <missionDir>
-contractor status     # must print INERT
+mission disarm <halted|gated|done> <missionDir>
+mission status     # must print INERT
 ```
 
 **`gated` is not `done`.** Any assertion that could not be verified in-harness

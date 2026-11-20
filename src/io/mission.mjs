@@ -126,7 +126,7 @@ export function buildBrief(root, missionDir) {
   return { plan, brief: renderRehydrationBrief(plan), artifacts }
 }
 
-/** A fresh, schema-valid mission-state for `contractor mission new`. */
+/** A fresh, schema-valid mission-state for `mission new`. */
 export function newMissionState(missionDir, { name = "", seats = {} } = {}) {
   return {
     mission: missionDir,

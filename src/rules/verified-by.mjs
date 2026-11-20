@@ -9,8 +9,8 @@
  * that exits 0, so it proves nothing while reading green; a blank evidence
  * leaves nothing to compare against.
  *
- * Three readers apply it: `contractor state upsert-escalation` refuses a payload
- * record that fails it, and `contractor check` warns on one already recorded.
+ * Three readers apply it: `mission state upsert-escalation` refuses a payload
+ * record that fails it, and `mission check` warns on one already recorded.
  *
  * Pure: no I/O.
  */

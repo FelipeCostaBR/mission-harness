@@ -1,11 +1,11 @@
 {
-  "name": "contractor-harness",
+  "name": "mission-harness",
   "version": "0.1.0",
   "description": "Contract-first multi-agent build harness. Define \"done\" as a machine-checkable contract before any code, fan the work out to path-scoped worker seats, and have a fresh adversarial seat adjudicate every claim.",
   "type": "module",
   "license": "MIT",
   "bin": {
-    "contractor": "./src/cli.mjs"
+    "mission": "./src/cli.mjs"
   },
   "exports": {
     ".": "./src/index.mjs",

@@ -1,5 +1,5 @@
 {
-  "//": "A worked example: a TypeScript monorepo with a server app, a web app, and shared packages. Yours will differ — this shows the SHAPE, not values to copy. Generate your real config with `contractor prompt init`.",
+  "//": "A worked example: a TypeScript monorepo with a server app, a web app, and shared packages. Yours will differ — this shows the SHAPE, not values to copy. Generate your real config with `mission prompt init`.",
 
   "version": 1,
 
@@ -9,7 +9,7 @@
   },
 
   "paths": {
-    "missions": ".contractor/missions",
+    "missions": "docs/prd",
     "specs": "docs/specs"
   },
 

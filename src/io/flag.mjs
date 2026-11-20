@@ -1,8 +1,8 @@
 /**
  * flag.mjs — arm / disarm / check the mission flag, cwd-proof.
  *
- * `.contractor/.active-mission` is what arms the edit-routing hook. Managing it
- * with a bare `rm .contractor/.active-mission` is fragile in a way that has
+ * `.mission/.active-mission` is what arms the edit-routing hook. Managing it
+ * with a bare `rm .mission/.active-mission` is fragile in a way that has
  * actually bitten: if the shell's working directory has drifted (a `cd` inside an
  * earlier compound command persists across later ones), the relative path
  * resolves under the WRONG directory, `rm -f` exits 0, and the real flag survives
@@ -84,7 +84,7 @@ export function disarm(root, status = "halted", missionDirFallback = "") {
     statusWritten,
     warning:
       !missionDir && status !== "halted"
-        ? `flag already gone and no mission folder given — missionStatus="${status}" was NOT written. Re-run: contractor disarm ${status} <missionDir>`
+        ? `flag already gone and no mission folder given — missionStatus="${status}" was NOT written. Re-run: mission disarm ${status} <missionDir>`
         : null,
   }
 }

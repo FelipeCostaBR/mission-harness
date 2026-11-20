@@ -22,7 +22,7 @@ import { exitWith, isMainModule, parseFlags } from "./cli-boot.mjs"
 
 // Resolved from this file, not process.cwd(): the harness runs from the repo
 // root, sub-packages and worktrees, and each would miss a cwd path. A project
-// overrides the whole table with `seatLadder` in contractor.config.json.
+// overrides the whole table with `seatLadder` in mission.config.json.
 export const DEFAULT_SEAT_TABLE = JSON.parse(readFileSync(new URL("./seat-ladder.default.json", import.meta.url), "utf8"))
 const TABLE = DEFAULT_SEAT_TABLE
 
@@ -261,7 +261,7 @@ function parseJson(text, what) {
  * The worker seat for the next corrective round of `milestone`, read from a
  * mission-state object: the start rung for the mission's seatProfile and
  * `sizeTier`, climbed from the seat the newest corrective round ran on.
- * Pure — the CLI and `contractor advance` both call it.
+ * Pure — the CLI and `mission advance` both call it.
  */
 export function correctiveSeatFromState(state, milestone, { cause, triggerIds = [], sizeTier } = {}, table = TABLE) {
   if (!CORRECTIVE_CAUSES.includes(cause)) throw new TypeError(`cause must be one of ${CORRECTIVE_CAUSES.join(", ")}`)

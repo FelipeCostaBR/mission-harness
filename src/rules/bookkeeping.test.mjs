@@ -31,7 +31,7 @@ test("clean mission-state yields no findings", () => {
   assert.equal(isBookkeepingClean(checkBookkeeping(state)), true)
 })
 
-test("MISSION_STATUSES is pinned (contractor disarm accepts is the same set minus active)", () => {
+test("MISSION_STATUSES is pinned (mission disarm accepts is the same set minus active)", () => {
   assert.deepEqual(MISSION_STATUSES, ["active", "halted", "done", "gated", "behaviorally-gated"])
   assert.deepEqual(NON_ACTIVE_STATUSES, ["halted", "done", "gated", "behaviorally-gated"])
 })

@@ -1,13 +1,13 @@
 # Configuration
 
-`contractor.config.json` is the **only** place project knowledge lives. Every
+`mission.config.json` is the **only** place project knowledge lives. Every
 rule in `src/rules/` is pure and project-blind; every prompt is written against
 this file's vocabulary. That separation is what lets the same harness run on a
 Rails monolith, a Go service mesh and a TypeScript monorepo.
 
-You should not hand-write this file. Run `contractor prompt init` and give it to
+You should not hand-write this file. Run `mission prompt init` and give it to
 your agent — it surveys the repository and derives the values. Then run
-`contractor doctor`, which checks the result against reality.
+`mission doctor`, which checks the result against reality.
 
 This page is the reference for what `doctor` is checking and why.
 
@@ -156,7 +156,7 @@ Paths you already know no area owns and that a typical feature will hit.
 
 This list is documentation for the planner: it lets a mission batch those
 escalations into one early milestone instead of discovering them one at a time
-across five later ones. `contractor doctor` reports the full count; you record
+across five later ones. `mission doctor` reports the full count; you record
 here the ones that matter.
 
 **Do not widen an area to absorb one.** The exclusion is the architecture.

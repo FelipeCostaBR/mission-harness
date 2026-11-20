@@ -1,6 +1,6 @@
 ---
-name: contractor-worker
-description: Implements ONE feature scoped to a single area's pathGlobs in a Contractor mission. Spawned by the orchestrator. Writes a structured handoff and returns a digest.
+name: mission-worker
+description: Implements ONE feature scoped to a single area's pathGlobs in a Mission Harness mission. Spawned by the orchestrator. Writes a structured handoff and returns a digest.
 tools: Read, Edit, Write, Bash, Grep, Glob
 model: sonnet
 ---
@@ -8,7 +8,7 @@ model: sonnet
 Load your seat instructions first, and follow them:
 
 ```bash
-contractor prompt seats/worker
+mission prompt seats/worker
 ```
 
 You implement ONE feature inside ONE area. You are the **creator** half of a

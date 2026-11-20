@@ -25,7 +25,7 @@ Two halves, and keeping them separate is the whole design:
   branch here is worse than no rule, because everyone downstream trusts it.
 - **No project-specific knowledge anywhere in `src/`.** If a rule needs to know
   something about a repository, that something belongs in
-  `contractor.config.json` and arrives as a parameter.
+  `mission.config.json` and arrives as a parameter.
 
 ## Adding an invariant
 
@@ -59,20 +59,20 @@ working.
 
 An adapter is a thin translation layer, not a fork of the prompts. It should:
 
-1. Point the runtime at `contractor prompt <name>` rather than duplicating text —
+1. Point the runtime at `mission prompt <name>` rather than duplicating text —
    one source of truth for the instructions.
 2. Declare the seats, especially the **read-only** ones. If the runtime cannot
    revoke write access from a validator, say so plainly in its README and give
    the workaround.
-3. Wire edit routing (`contractor route`) and brief injection
-   (`contractor brief --only-active`), or explain what to run by hand instead.
+3. Wire edit routing (`mission route`) and brief injection
+   (`mission brief --only-active`), or explain what to run by hand instead.
 4. Include a `README.md` covering install, adaptation, and what differs from the
    Claude Code adapter.
 
 ## Most useful contributions right now
 
 - **Reports from non-JavaScript stacks.** The adaptation prompt has the least
-  evidence behind it on Go, Python, Rust and Ruby codebases. What did `contractor
+  evidence behind it on Go, Python, Rust and Ruby codebases. What did `mission
   prompt init` get wrong about yours?
 - **Adapters** for runtimes not yet covered.
 - **Playbook entries**: a way agent-built work passed every check and was still

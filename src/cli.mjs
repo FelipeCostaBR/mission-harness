@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * contractor — CLI for the contract-first multi-agent build harness.
+ * mission — CLI for the contract-first multi-agent build harness.
  *
  * This CLI does the DETERMINISTIC half of the harness: the parts that must not
  * depend on a model's judgement. It never calls an LLM. It scaffolds and
@@ -8,8 +8,8 @@
  * to areas, and evaluates the pure decision rules against a mission's artifacts.
  *
  * The other half — planning, building, validating — is prompts, run by whichever
- * agent runtime you use. `contractor prompt <name>` prints them for pasting into
- * any model; `contractor install <adapter>` wires them into a specific runtime.
+ * agent runtime you use. `mission prompt <name>` prints them for pasting into
+ * any model; `mission install <adapter>` wires them into a specific runtime.
  */
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, cpSync } from "node:fs"
@@ -100,8 +100,8 @@ function resolveMission(root, explicit) {
   if (c.armed && c.missionDir) return c.missionDir
   throw new UserError(
     "No mission specified and none armed.\n" +
-      "  Pass one:   contractor <cmd> <missionDir>\n" +
-      "  Or arm it:  contractor arm <missionDir>",
+      "  Pass one:   mission <cmd> <missionDir>\n" +
+      "  Or arm it:  mission arm <missionDir>",
   )
 }
 
@@ -129,7 +129,7 @@ function cmdInit(args) {
     throw new UserError(`${CONFIG_FILENAME} already exists at ${root}. Pass --force to overwrite.`)
   }
 
-  const template = readFileSync(join(PKG_ROOT, "templates", "contractor.config.json"), "utf8")
+  const template = readFileSync(join(PKG_ROOT, "templates", "mission.config.json"), "utf8")
   writeFileSync(configPath, template)
 
   const missionsDir = join(root, STATE_DIRNAME, "missions")
@@ -143,13 +143,13 @@ function cmdInit(args) {
   out("Adapting it to this codebase is an agent task, not a form to fill in. Hand")
   out("your model the adaptation prompt and let it survey the repo:")
   out("")
-  out(dim("  contractor prompt init > /tmp/contractor-init.md"))
+  out(dim("  mission prompt init > /tmp/mission-init.md"))
   out(dim("  # then, in your agent of choice:"))
-  out(dim("  #   \"Follow /tmp/contractor-init.md against this repository.\""))
+  out(dim("  #   \"Follow /tmp/mission-init.md against this repository.\""))
   out("")
   out("When it is done, verify the result mechanically:")
   out("")
-  out(dim("  contractor doctor"))
+  out(dim("  mission doctor"))
 }
 
 function cmdDoctor() {
@@ -157,7 +157,7 @@ function cmdDoctor() {
   const findings = []
   const add = (severity, code, detail) => findings.push({ severity, code, detail })
 
-  out(bold(`contractor doctor`))
+  out(bold(`mission doctor`))
   out(dim(`  config: ${configPath}`))
   out(dim(`  root:   ${root}`))
   out("")
@@ -286,7 +286,7 @@ function cmdDoctor() {
   }
 
   // --- missions dir
-  const missionsRoot = join(root, config.paths?.missions ?? ".contractor/missions")
+  const missionsRoot = join(root, config.paths?.missions ?? "docs/prd")
   if (!existsSync(missionsRoot)) {
     add("info", "missions-dir-missing", `${relative(root, missionsRoot)} does not exist yet; it is created on first mission.`)
   }
@@ -320,9 +320,9 @@ function cmdDoctor() {
 
 function cmdMissionNew(args) {
   const id = args[0]
-  if (!id) throw new UserError("usage: contractor mission new <mission-id>")
+  if (!id) throw new UserError("usage: mission new <mission-id>")
   const { config, root } = loadConfig()
-  const missionDir = join(config.paths?.missions ?? ".contractor/missions", id)
+  const missionDir = join(config.paths?.missions ?? "docs/prd", id)
   const p = ensureMissionDirs(root, missionDir)
   if (!existsSync(p.state)) {
     const seats = Object.fromEntries(
@@ -338,14 +338,14 @@ function cmdMissionNew(args) {
   out(`${green("✓")} mission scaffolded at ${missionDir}`)
   out("")
   out("  1. Write the spec:      " + dim(`${missionDir}/spec.md`))
-  out("  2. Plan it:             " + dim("contractor prompt plan") + dim("  → give it to your orchestrator"))
-  out("  3. Arm it (after approval): " + dim(`contractor arm ${missionDir}`))
+  out("  2. Plan it:             " + dim("mission prompt plan") + dim("  → give it to your orchestrator"))
+  out("  3. Arm it (after approval): " + dim(`mission arm ${missionDir}`))
 }
 
 function cmdArm(args) {
   const { root } = loadConfig()
   const missionDir = args[0]
-  if (!missionDir) throw new UserError("usage: contractor arm <missionDir>")
+  if (!missionDir) throw new UserError("usage: mission arm <missionDir>")
   const r = arm(root, missionDir)
   if (!r.ok) throw new UserError(`FAILED to arm: ${r.flag} was not written`)
   out(`${green("ARMED")} ${r.flag} -> ${missionDir}`)
@@ -390,7 +390,7 @@ function probeSubstrate(root) {
   } catch {
     return { status: "unavailable-worktree", detail: "not a git repository" }
   }
-  const projectDir = process.env.CLAUDE_PROJECT_DIR ?? process.env.CONTRACTOR_PROJECT_DIR ?? null
+  const projectDir = process.env.CLAUDE_PROJECT_DIR ?? process.env.MISSION_PROJECT_DIR ?? null
   if (projectDir && resolve(projectDir) !== resolve(top)) {
     return {
       status: "unavailable-worktree",
@@ -609,7 +609,7 @@ function cmdEscalate(args) {
   const additiveOnly = args.includes("--additive-only")
   const files = args.filter((a) => !a.startsWith("-"))
   if (!files.length) {
-    throw new UserError("usage: contractor escalate <file> [file...] [--additive-only]")
+    throw new UserError("usage: mission escalate <file> [file...] [--additive-only]")
   }
   const route = routeEscalation({ files, additiveOnly }, escalationConfig(config))
   out(bold(`escalation route: ${route.route === "inline" ? yellow("INLINE") : green("DELEGATE")}`))
@@ -686,7 +686,7 @@ async function cmdRoute(args) {
 
   const rel = paths.map((p) => (isAbsolute(p) ? relative(root, p) : p).split("\\").join("/"))
   const n = enqueueEdits(root, c.missionDir, config, rel, { session })
-  if (process.env.CONTRACTOR_DEBUG) err(`[contractor route] queued ${n}/${rel.length} path(s)`)
+  if (process.env.MISSION_DEBUG) err(`[mission route] queued ${n}/${rel.length} path(s)`)
 }
 
 function readStdin() {
@@ -703,7 +703,7 @@ function readStdin() {
 function cmdOwn(args) {
   const { config, root } = loadConfig()
   const paths = args.filter((a) => !a.startsWith("-"))
-  if (!paths.length) throw new UserError("usage: contractor own <path> [path...]")
+  if (!paths.length) throw new UserError("usage: mission own <path> [path...]")
   const rel = paths.map((p) => (isAbsolute(p) ? relative(root, p) : p))
   for (const p of rel) {
     const area = routeFileToArea(config, p)
@@ -726,12 +726,12 @@ function cmdPrompt(args) {
     out("")
     for (const [key, file] of known) out(`  ${key.padEnd(22)} ${dim(relative(PKG_ROOT, file))}`)
     out("")
-    out(dim("  contractor prompt <name>            print it"))
-    out(dim("  contractor prompt <name> --raw      print with no header"))
+    out(dim("  mission prompt <name>            print it"))
+    out(dim("  mission prompt <name> --raw      print with no header"))
     return
   }
   const match = known.find(([k]) => k === name)
-  if (!match) throw new UserError(`Unknown prompt "${name}". Run \`contractor prompt\` to list them.`)
+  if (!match) throw new UserError(`Unknown prompt "${name}". Run \`mission prompt\` to list them.`)
   const body = readFileSync(match[1], "utf8")
   if (args.includes("--raw")) {
     process.stdout.write(body)
@@ -767,7 +767,7 @@ function cmdInstall(args) {
     out("")
     for (const a of available) out(`  ${a}`)
     out("")
-    out(dim("  contractor install <adapter>"))
+    out(dim("  mission install <adapter>"))
     return
   }
   if (!available.includes(adapter)) {
@@ -790,13 +790,13 @@ function cmdInstall(args) {
   out(`    ${dim(join(src, "README.md"))}`)
   out("")
   out(`Next: adapt the harness to this repository.`)
-  out(`    ${dim("contractor prompt init")}   ${dim("→ give it to your agent")}`)
-  out(`    ${dim("contractor doctor")}        ${dim("→ verify the result")}`)
+  out(`    ${dim("mission prompt init")}   ${dim("→ give it to your agent")}`)
+  out(`    ${dim("mission doctor")}        ${dim("→ verify the result")}`)
 }
 
 // ---------------------------------------------------------------------------
 
-const USAGE = `${bold("contractor")} — contract-first multi-agent build harness
+const USAGE = `${bold("mission")} — contract-first multi-agent build harness
 
 ${bold("Setup")}
   init [--force]              scaffold ${CONFIG_FILENAME} + ${STATE_DIRNAME}/
@@ -805,14 +805,14 @@ ${bold("Setup")}
   prompt [name] [--raw]       print a seat prompt (works with ANY model)
 
 ${bold("Missions")}
-  mission new <id>            scaffold a mission folder
+  new <id>                    scaffold a mission folder (docs/prd/<id>/)
   arm <missionDir>            arm edit-routing for a mission
   disarm [status] [dir]       halted (default) | gated | done
   status [missionDir]         armed state + milestone position
   brief [missionDir] [--json] the rehydration digest for a fresh context
   state [missionDir] <cmd>    the ONLY way to change mission-state.json after
                               approval (locked, atomic, bookkeeping-checked);
-                              run \`contractor state help\` for its commands
+                              run \`mission state help\` for its commands
 
 ${bold("Decisions")} ${dim("(pure rules, evaluated against the mission's artifacts)")}
   seat resolve '<json>'       the model + effort a role's next spawn runs on
@@ -833,7 +833,7 @@ Docs: https://github.com/FelipeCostaBR/contractor
 `
 
 /**
- * `contractor state [missionDir] <command> [args]` — the ONLY sanctioned route
+ * `mission state [missionDir] <command> [args]` — the ONLY sanctioned route
  * for a mission-state.json write once the plan is approved. Locked, atomic,
  * and refused when it would add a bookkeeping error. With no missionDir it
  * acts on the armed mission.
@@ -851,8 +851,8 @@ function cmdState(args) {
 }
 
 /**
- * `contractor seat resolve '<json>'` and
- * `contractor seat corrective [missionDir] <milestone> --cause <c> --triggers '<ids>'`:
+ * `mission seat resolve '<json>'` and
+ * `mission seat corrective [missionDir] <milestone> --cause <c> --triggers '<ids>'`:
  * the seat (model + effort) the next spawn of a role runs on, from the
  * project's seat ladder. Pure; writes nothing.
  */
@@ -871,7 +871,7 @@ function cmdSeat(args) {
   return emit(runSeatCLI(args, table))
 }
 
-/** `contractor size [missionDir] <milestone>`: small | normal | large. */
+/** `mission size [missionDir] <milestone>`: small | normal | large. */
 function cmdSize(args) {
   const { root } = loadConfig()
   const missionDir = resolveMission(root, args.length >= 2 ? args[0] : null)
@@ -880,7 +880,7 @@ function cmdSize(args) {
 }
 
 /**
- * `contractor commits [missionDir] <rev-range>`: the per-commit boundary rule.
+ * `mission commits [missionDir] <rev-range>`: the per-commit boundary rule.
  * Every path a commit touches must sit inside a grant of the feature or
  * escalation that claims the commit; protected paths are violations whatever
  * the grant; the mission's own artifacts are exempt.
@@ -889,7 +889,7 @@ function cmdCommits(args) {
   const { root, config } = loadConfig()
   const missionDir = resolveMission(root, args.length >= 2 ? args[0] : null)
   const range = args[args.length - 1]
-  if (!range) throw new UserError("usage: contractor commits [missionDir] <rev-range>")
+  if (!range) throw new UserError("usage: mission commits [missionDir] <rev-range>")
   const abs = isAbsolute(missionDir) ? missionDir : join(root, missionDir)
   const rel = relative(root, abs).split("\\").join("/")
   const cb = config.commitBoundary ?? {}
@@ -921,9 +921,12 @@ async function main() {
       return cmdInit(args)
     case "doctor":
       return cmdDoctor(args)
+    case "new":
+      return cmdMissionNew(args)
     case "mission":
+      // the pre-rename spelling, `mission mission new <id>`
       if (args[0] === "new") return cmdMissionNew(args.slice(1))
-      throw new UserError("usage: contractor mission new <id>")
+      throw new UserError("usage: mission new <id>")
     case "arm":
       return cmdArm(args)
     case "state":
@@ -981,9 +984,9 @@ main().catch((e) => {
   }
   // `route` runs as a hook: it must never break the agent's tool loop.
   if (process.argv[2] === "route") {
-    err(`[contractor route] ${e?.message ?? e}`)
+    err(`[mission route] ${e?.message ?? e}`)
     return
   }
-  err(red(`contractor: ${e?.stack ?? e}`))
+  err(red(`mission: ${e?.stack ?? e}`))
   process.exitCode = 1
 })

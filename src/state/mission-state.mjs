@@ -2,7 +2,7 @@
 /**
  * mission-state-cli.mjs — the missions-harness bookkeeping CLI.
  *
- * `contractor state <missionDir> <command> [args]` is the SOLE and SAFE
+ * `mission state <missionDir> <command> [args]` is the SOLE and SAFE
  * route for every `mission-state.json` write after mission-plan's one-time
  * initial authoring — no raw edit, heredoc, `node -e` or `jq` is sanctioned.
  * Every command: (1) takes an exclusive lock on the prd-dir, (2) loads
@@ -144,11 +144,11 @@ const COMMAND_SPECS = {
   "add-assertion": { positionals: ["milestone", "id"], flags: {} },
 }
 
-/** Every command `contractor state` accepts. */
+/** Every command `mission state` accepts. */
 export const COMMAND_NAMES = Object.freeze(Object.keys(COMMAND_SPECS))
 
 /** Surfaces a feature registered mid-mission may take, when the caller passes
- *  none. `contractor state` always passes the config's surfaces{} keys. */
+ *  none. `mission state` always passes the config's surfaces{} keys. */
 const DEFAULT_SURFACES = FEATURE_SURFACES
 
 /** Set per runCLI call from opts.surfaces; read by applyCommand and the
@@ -1642,7 +1642,7 @@ export function runCLI(argv, opts = {}) {
     const prdDir = realpathSync(prdDirArg)
     if (!command || !(command in COMMAND_SPECS)) {
       throw new CliError(
-        `usage: contractor state <missionDir> <command> [args]\ncommands: ${Object.keys(COMMAND_SPECS).join(", ")}`,
+        `usage: mission state <missionDir> <command> [args]\ncommands: ${Object.keys(COMMAND_SPECS).join(", ")}`,
         2,
       )
     }

@@ -22,7 +22,7 @@ const baseState = () => ({
 })
 
 function makeMission() {
-  const root = mkdtempSync(path.join(tmpdir(), "contractor-mission-"))
+  const root = mkdtempSync(path.join(tmpdir(), "mission-harness-"))
   const rel = "missions/demo"
   const dir = path.join(root, rel)
   mkdirSync(path.join(dir, "handoffs"), { recursive: true })

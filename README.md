@@ -1,4 +1,4 @@
-# Contractor
+# Mission Harness
 
 **The contract-first multi-agent build harness.**
 
@@ -16,14 +16,14 @@ records what it learned into the mission's artifacts, which is the only memory
 that survives a context window.*
 
 ```bash
-npm install -g contractor-harness
+npm install -g mission-harness
 cd your-project
 
-contractor init                       # scaffold
-contractor prompt init                # hand this to your agent — it adapts the harness to YOUR repo
-contractor doctor                     # verify the adaptation against reality
+mission init                       # scaffold
+mission prompt init                # hand this to your agent — it adapts the harness to YOUR repo
+mission doctor                     # verify the adaptation against reality
 
-contractor mission new csv-export     # then write the spec and run it
+mission new csv-export     # then write the spec and run it
 ```
 
 Works with Claude Code, Codex, Cursor, or a person pasting prompts into a chat
@@ -48,7 +48,7 @@ The failures are rarely "the model could not write the function". They are:
 - **It said done.** The part that mattered was never verified.
 
 More capable models make this *worse*, not better, because the output is more
-plausible. Contractor is the harness that makes those failures visible.
+plausible. Mission Harness is the harness that makes those failures visible.
 
 ## How it works
 
@@ -101,7 +101,7 @@ its way past a paragraph.
 **5. The mission survives its own context window.**
 A real mission spans many windows, and **most of what a fresh window spends goes
 on re-orientation** — re-reading source to rediscover what the last one knew.
-`contractor brief` reconstructs position *and* accumulated knowledge in ≤6KB, so
+`mission brief` reconstructs position *and* accumulated knowledge in ≤6KB, so
 a reset costs a couple of thousand tokens instead of a hundred thousand.
 
 ## Adapting it to your codebase
@@ -110,9 +110,9 @@ The harness knows nothing about your repository until you tell it. That is one
 file, and you do not write it by hand:
 
 ```bash
-contractor prompt init > /tmp/init.md
+mission prompt init > /tmp/init.md
 # "Follow /tmp/init.md against this repository."
-contractor doctor
+mission doctor
 ```
 
 The prompt makes your agent survey the repo — build system, CI, test layout, git
@@ -122,7 +122,7 @@ reality: do the globs match real files, are the areas disjoint, do the gate
 commands exist, is the validator actually read-only.
 
 ```
-$ contractor doctor
+$ mission doctor
   ERROR area-matches-nothing
         Area "reporting" matches 0 tracked files. Its globs are wrong or the code moved.
   warn  gate-script-missing
@@ -141,7 +141,7 @@ The deterministic half. It never calls a model.
 
 ```
 Setup
-  init                        scaffold contractor.config.json
+  init                        scaffold mission.config.json
   doctor                      validate the config against this repository
   install [adapter]           wire the prompts into an agent runtime
   prompt [name]               print a seat prompt (works with ANY model)
@@ -235,7 +235,7 @@ goes wrong while everything reports green.
 | [protocol.md](docs/protocol.md) | Seats, artifacts, the loop, terminal states |
 | [schemas.md](docs/schemas.md) | Every JSON artifact, annotated |
 | [invariants.md](docs/invariants.md) | The rules, and what breaking each one cost |
-| [configuration.md](docs/configuration.md) | `contractor.config.json` reference |
+| [configuration.md](docs/configuration.md) | `mission.config.json` reference |
 | [models.md](docs/models.md) | Which seats deserve a frontier model, and why |
 | [playbook.md](docs/playbook.md) | Failure modes that pass every check |
 | [faq.md](docs/faq.md) | Honest answers, including when not to use this |
@@ -245,7 +245,7 @@ goes wrong while everything reports green.
 Every decision rule is pure, tested, and importable:
 
 ```js
-import { decideSelfHeal, partitionDisjoint, routeEscalation } from "contractor-harness"
+import { decideSelfHeal, partitionDisjoint, routeEscalation } from "mission-harness"
 ```
 
 No I/O, no clock, no randomness. Build your own runner and the decisions stay

@@ -5,14 +5,14 @@ You are the orchestrator in its **execution phase**. The contract and
 current milestone's features.
 
 Your job here is routing and adjudication, not typing. Intelligence lives in the
-seats you spawn; determinism lives in the `contractor` CLI.
+seats you spawn; determinism lives in the `mission` CLI.
 
 ---
 
 ## 1. Arm the hook
 
 ```
-contractor arm <missionDir>
+mission arm <missionDir>
 ```
 
 This writes the flag, sets `missionStatus: "active"`, and — importantly — probes
@@ -66,7 +66,7 @@ contract edit — note it in `decisions[]`.
 ## 3. Partition the milestone
 
 ```
-contractor partition <milestoneId>
+mission partition <milestoneId>
 ```
 
 Serial in-tree is the default and the fallback. Features run **concurrently only
@@ -111,16 +111,16 @@ said `live`**. Clear `scopeOverride` once the milestone is validated.
 
 ## 4. Spawn the workers
 
-For each feature, spawn one worker with the prompt from `contractor prompt
+For each feature, spawn one worker with the prompt from `mission prompt
 seats/worker` (or `seats/ui-worker` for a surface that renders an interface), at
 the seat the ladder returns for the milestone's size tier:
 
 ```
-contractor seat resolve '{"role":"worker","sizeTier":"<milestone sizeTier>"}'
+mission seat resolve '{"role":"worker","sizeTier":"<milestone sizeTier>"}'
 ```
 
 Spawn with exactly the returned model and effort. Record the worker as active
-before it starts (`contractor state <missionDir> set-field activeWorker '"<feature>"'`)
+before it starts (`mission state <missionDir> set-field activeWorker '"<feature>"'`)
 and clear it when its digest lands, so a reset mid-worker is visible in the brief.
 
 Pass in the payload:
@@ -147,7 +147,7 @@ payload. Stable prefixes hit the prompt cache; a reshuffled prompt does not.
 
 Instruct every worker that its **last action** is to WRITE its full handoff to
 `<missionDir>/handoffs/<feature-id>.json` itself, and then RETURN only the
-**digest** (`HANDOFF_DIGEST_SCHEMA` from `contractor-harness`, ~1KB).
+**digest** (`HANDOFF_DIGEST_SCHEMA` from `mission-harness`, ~1KB).
 
 This is not tidiness. Full handoffs returning through your context took a large
 share of a worker-heavy session, and the object then passed through a *second*
@@ -181,7 +181,7 @@ The worker must NOT have made it. Escalations are always serial.
 **Route it first, mechanically:**
 
 ```
-contractor escalate <files…> [--additive-only]
+mission escalate <files…> [--additive-only]
 ```
 
 Pass `--additive-only` **only** for a pure additive entry with no logic change,
@@ -189,7 +189,7 @@ and when unsure leave it off — the conservative route is delegation.
 
 ### `delegate` — never implement it yourself
 
-Spawn an **escalation worker** (`contractor prompt seats/escalation-worker`) and
+Spawn an **escalation worker** (`mission prompt seats/escalation-worker`) and
 stay thin: scope the work, read the digest. Payload = the reason, the exact file
 list, the rule's computed `workerPathGlobs` as its scope (a tight per-escalation
 grant, never a blanket grant over a shared directory), the assertions it unblocks,
@@ -197,9 +197,9 @@ and `missionDir`. It writes `handoffs/ESC-<id>.json` and returns a digest.
 
 **You MUST record the `escalations[]` entry with `implementedBy:
 "escalation-worker"`**, through the CLI:
-`contractor state <missionDir> upsert-escalation <id> '{"status":"in-progress","route":"delegate","implementedBy":"escalation-worker","files":[...],"reason":"..."}'`. The fresh-validator spawn at the boundary keys on exactly
+`mission state <missionDir> upsert-escalation <id> '{"status":"in-progress","route":"delegate","implementedBy":"escalation-worker","files":[...],"reason":"..."}'`. The fresh-validator spawn at the boundary keys on exactly
 that marker. Without it, no validator ever spawns, the creator/verifier split
-silently does not happen, and nothing tells you — which is why `contractor check`
+silently does not happen, and nothing tells you — which is why `mission check`
 treats a missing marker as an error.
 
 ### `inline` — the full discipline, no exceptions
@@ -237,7 +237,7 @@ f. **Fail-fast mutation chains.** Prefix chained mutation sequences with `set -e
 ## 6. The simplify pass
 
 Once the milestone's features are built and before validation, run **one spawned
-worker per touched area** with `contractor prompt seats/simplifier`.
+worker per touched area** with `mission prompt seats/simplifier`.
 
 **Spawn it; do not do it inline.** Two reasons. It is the last code-editing seam
 left in your seat, and it is an expensive one there. And the orchestrator who
@@ -248,7 +248,7 @@ holds none of the rationalisations for why the code looks the way it does.
   They may run in parallel across areas (disjoint by construction).
 - **Cross-area finds are PROPOSALS, never edits.** Simplify's highest-value
   results usually cross area lines, and a path-scoped worker structurally cannot
-  make those edits. It reports them; you route each through `contractor escalate`
+  make those edits. It reports them; you route each through `mission escalate`
   like any other cross-area change. Never let a simplify worker widen its own
   scope.
 - **Ordering is load-bearing.** Simplify EDITS code, so it must run **before**
@@ -265,7 +265,7 @@ holds none of the rationalisations for why the code looks the way it does.
 ## 7. Hand off to validate
 
 When the features are built, handoffs collected, and the simplify pass committed,
-move to `contractor prompt validate` for the boundary drain. **Do not advance the
+move to `mission prompt validate` for the boundary drain. **Do not advance the
 milestone until validation passes.**
 
 ---
@@ -283,7 +283,7 @@ milestone until validation passes.**
 - **Working-directory discipline.** A shell's working directory persists across
   calls, so one `cd` inside a compound command silently changes it for every later
   step — and relative bookkeeping paths then resolve somewhere else entirely,
-  exiting 0. Use the `contractor` CLI for flag operations, `git -C <root>` for
+  exiting 0. Use the `mission` CLI for flag operations, `git -C <root>` for
   commits, and absolute paths for file operations. If a step must run from a
   subdirectory, keep the `cd` INSIDE that one chained command.
 

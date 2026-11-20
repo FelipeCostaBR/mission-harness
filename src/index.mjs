@@ -1,10 +1,10 @@
 /**
  * Public API. Import the rules directly if you are building your own runner:
  *
- *   import { decideSelfHeal, partitionDisjoint } from "contractor-harness"
+ *   import { decideSelfHeal, partitionDisjoint } from "mission-harness"
  *
  * Every rule is pure and project-blind. Project knowledge arrives through
- * `contractor.config.json`, loaded via `loadConfig()`.
+ * `mission.config.json`, loaded via `loadConfig()`.
  */
 
 export { decideSelfHeal } from "./rules/self-heal.mjs"

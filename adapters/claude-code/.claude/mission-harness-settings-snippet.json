@@ -9,12 +9,12 @@
     "PostToolUse": [
       {
         "matcher": "Edit|Write|MultiEdit",
-        "hooks": [{ "type": "command", "command": "contractor route" }]
+        "hooks": [{ "type": "command", "command": "mission route" }]
       }
     ],
     "SessionStart": [
       {
-        "hooks": [{ "type": "command", "command": "contractor brief --only-active" }]
+        "hooks": [{ "type": "command", "command": "mission brief --only-active" }]
       }
     ]
   }

@@ -96,7 +96,7 @@ function isStringArray(x) {
 
 /**
  * Build `pathGlobsBySlug` from an `agent-routing.json`-shaped registry (the
- * format the pre-package harness copies used; `contractor migrate` reads it) —
+ * format the pre-package harness copies used; `mission migrate` reads it) —
  * `{ modules: { <slug>: { surface, pathGlobs, retired? } }, sharedKernel: … }`,
  * an object keyed by slug. `$`-prefixed keys (`$comment`) are skipped, and so
  * are `retired: true` modules: a feature naming one is

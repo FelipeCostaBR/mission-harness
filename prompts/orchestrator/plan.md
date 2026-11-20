@@ -21,7 +21,7 @@ Read every document in the mission folder. Extract:
 - the features to build,
 - the acceptance criteria,
 - the areas each feature touches (match described surfaces to area `pathGlobs` in
-  `contractor.config.json`).
+  `mission.config.json`).
 
 ## 2. Interview for gaps
 
@@ -154,14 +154,14 @@ so each worker's grant survives a context reset.
 Give each milestone a `sizeTier` from the contract text it must satisfy:
 
 ```
-contractor size <missionDir> --assertions <comma-separated ids>
+mission size <missionDir> --assertions <comma-separated ids>
 ```
 
 (`small | normal | large`; it picks the worker's start rung on the seat ladder.)
 
 This is the **one** time you write `mission-state.json` directly. From approval
-on, every change goes through `contractor state` (see the mission prompt). Run
-`contractor check <missionDir>` on what you wrote and fix every error before you
+on, every change goes through `mission state` (see the mission prompt). Run
+`mission check <missionDir>` on what you wrote and fix every error before you
 render the approval summary.
 
 ### 4a. Coverage gate — every assertion has an owner that can actually build it
@@ -191,7 +191,7 @@ shipped mechanism undocumented and untested in the tree.
 Walk the spec's intended changes and list every path no area owns:
 
 ```
-contractor own <every path the spec implies>
+mission own <every path the spec implies>
 ```
 
 Cross-cutting paths — shared kernels, schema files, generated registries, route

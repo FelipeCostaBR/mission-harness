@@ -25,7 +25,7 @@
 /** Every missionStatus the harness recognizes. `gated` = paused on an
  *  out-of-harness live gate (never reported as done); `behaviorally-gated` is
  *  its pre-package spelling, kept so older mission-states still validate.
- *  `contractor disarm` accepts every value but "active", which only `arm` sets. */
+ *  `mission disarm` accepts every value but "active", which only `arm` sets. */
 export const MISSION_STATUSES = ["active", "halted", "done", "gated", "behaviorally-gated"]
 
 /** Non-active statuses (the hook is inert for all of these). */
@@ -49,7 +49,7 @@ export const META_ATTRIBUTION = ["exact", "batch"]
 
 /** The default features{}.<id>.surface vocabulary, used only when the caller
  *  passes no `opts.surfaces`. The CLI always passes the project's own surface
- *  names (the keys of `contractor.config.json` surfaces{}), so this list only
+ *  names (the keys of `mission.config.json` surfaces{}), so this list only
  *  matters to a caller using the rule without a config. */
 export const FEATURE_SURFACES = ["backend", "web", "mobile"]
 

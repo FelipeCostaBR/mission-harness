@@ -3,7 +3,7 @@
 ### Is this another agent framework?
 
 No. There is no runtime, no scheduler, no provider SDK, no orchestration graph.
-Contractor is a **protocol** — seats, artifacts, gates — plus a CLI that
+Mission Harness is a **protocol** — seats, artifacts, gates — plus a CLI that
 implements the decisions a model should not be making by itself.
 
 It composes with whatever you already use. The rules are importable if you want
@@ -11,13 +11,13 @@ to build your own runner.
 
 ### How is it different from CrewAI / AutoGen / LangGraph?
 
-Those answer *how do I wire multiple agents together?* Contractor answers *how do
+Those answer *how do I wire multiple agents together?* Mission Harness answers *how do
 I know the result is correct?*
 
 The distinctive parts are the ones about verification: a contract approved before
 any code, a read-only seat that never saw the implementation, a deterministic gate
 no seat can talk its way past, and a circuit breaker that stops instead of
-retrying forever. You could implement Contractor's protocol on top of any of
+retrying forever. You could implement Mission Harness's protocol on top of any of
 those frameworks.
 
 ### Do I need a frontier model?
@@ -35,7 +35,7 @@ See [models.md](models.md).
 
 ### Does it work with a model that has no tool use?
 
-Yes, with you as the tool layer. `contractor prompt <seat>` prints each seat's
+Yes, with you as the tool layer. `mission prompt <seat>` prints each seat's
 instructions; you paste, the model reasons, you run the commands. Slower, and the
 protocol holds — because the CLI does every deterministic part. See
 `adapters/generic/`.
@@ -98,7 +98,7 @@ proof** the worker's "I wrote it" claim was true.
 
 ### My mission's edit queue is empty but work definitely happened.
 
-Expected, and handled — provided you armed with `contractor arm`, which probes
+Expected, and handled — provided you armed with `mission arm`, which probes
 for it.
 
 Most agent runtimes freeze their project directory at session boot. A mission

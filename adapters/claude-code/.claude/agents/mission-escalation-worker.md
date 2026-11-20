@@ -1,5 +1,5 @@
 ---
-name: contractor-escalation-worker
+name: mission-escalation-worker
 description: Implements a change to a protected surface (schema, shared kernel, generated registry, public API) inside a tight per-escalation path grant. Spawned when routeEscalation returns "delegate".
 tools: Read, Edit, Write, Bash, Grep, Glob
 model: sonnet
@@ -8,7 +8,7 @@ model: sonnet
 Load your seat instructions first, and follow them:
 
 ```bash
-contractor prompt seats/escalation-worker
+mission prompt seats/escalation-worker
 ```
 
 You are changing a **protected surface**. A feature worker was forbidden from

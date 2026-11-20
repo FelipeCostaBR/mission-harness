@@ -171,7 +171,7 @@ A round logged but not counted. Two rules read that counter and nothing else —
 breaker and the seat escalation — so one missed increment disarms both, silently.
 Observed: a milestone running five uncapped rounds.
 
-→ `contractor check` errors on a counter behind its log.
+→ `mission check` errors on a counter behind its log.
 
 ### The escalation nobody reviewed
 

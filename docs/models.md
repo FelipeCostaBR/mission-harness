@@ -1,12 +1,12 @@
 # Models and seats
 
-Contractor works with any model that can read files, run commands, and follow a
+Mission Harness works with any model that can read files, run commands, and follow a
 long instruction. It works **markedly better** with a frontier reasoning model in
 two specific seats, and that difference is not uniform — it is concentrated where
 a mistake is expensive and invisible.
 
 Seats are named by abstract tier (`economy` / `standard` / `frontier`) and mapped
-to real model ids in one block of `contractor.config.json`, so a model upgrade is
+to real model ids in one block of `mission.config.json`, so a model upgrade is
 a one-line change and the harness is not coupled to a vendor.
 
 ---
@@ -61,7 +61,7 @@ Broadly, by provider family:
 ## Long context is the second axis, and it is not optional for the orchestrator
 
 The orchestrator carries a mission across many windows. The harness is built to
-survive that — `contractor brief` reconstructs a working state in ≤6KB — but a
+survive that — `mission brief` reconstructs a working state in ≤6KB — but a
 larger window still means fewer resets, and every reset costs a ramp and a cold
 prompt cache.
 
@@ -113,11 +113,11 @@ give it a prompt. Everything else is adaptation.
 
 | Runtime | Spawning | Notes |
 | --- | --- | --- |
-| **Claude Code** | subagents (`.claude/agents/`) | The richest fit: hooks give you automatic edit routing and brief injection. `contractor install claude-code`. |
-| **Codex / AGENTS.md** | `codex exec` per seat | `contractor install codex`. Edit routing is manual (`contractor route <files>`) or a wrapper script. |
-| **Cursor** | manual, per seat | `contractor install cursor`. Best driven with the orchestrator in one window and seats in separate ones. |
-| **Any chat model** | you, copy-pasting | `contractor prompt <seat>`. Slower, and it genuinely works — the CLI does all the deterministic parts. |
-| **Your own runner** | `import` the rules | `import { decideSelfHeal, partitionDisjoint } from "contractor-harness"`. |
+| **Claude Code** | subagents (`.claude/agents/`) | The richest fit: hooks give you automatic edit routing and brief injection. `mission install claude-code`. |
+| **Codex / AGENTS.md** | `codex exec` per seat | `mission install codex`. Edit routing is manual (`mission route <files>`) or a wrapper script. |
+| **Cursor** | manual, per seat | `mission install cursor`. Best driven with the orchestrator in one window and seats in separate ones. |
+| **Any chat model** | you, copy-pasting | `mission prompt <seat>`. Slower, and it genuinely works — the CLI does all the deterministic parts. |
+| **Your own runner** | `import` the rules | `import { decideSelfHeal, partitionDisjoint } from "mission-harness"`. |
 
 **Fresh context per seat is the one non-negotiable.** If your runtime cannot give
 a validator a context that never saw the implementation, you are not running this

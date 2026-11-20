@@ -7,13 +7,13 @@
   },
 
   "paths": {
-    "missions": ".contractor/missions",
+    "missions": "docs/prd",
     "specs": "docs/specs"
   },
 
   "//areas": [
     "The unit of worker ownership. One area = one slug + the ONLY paths a worker",
-    "assigned to it may edit. Areas MUST be disjoint: `contractor doctor` fails if",
+    "assigned to it may edit. Areas MUST be disjoint: `mission doctor` fails if",
     "two areas claim the same file, because the parallelism rule assumes it.",
     "Do NOT try to cover the whole repo. Paths owned by nobody are a feature:",
     "they force an escalation instead of letting a path-scoped worker edit a",

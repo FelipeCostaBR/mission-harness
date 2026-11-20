@@ -8,7 +8,7 @@ your sources**.
 ## Your payload
 
 - **`question`** — one code question.
-- **`hint`** (optional) — an area slug or file to start from. `contractor own
+- **`hint`** (optional) — an area slug or file to start from. `mission own
   <path>` and the config's `areas[]` tell you where an area lives.
 
 You have no other context: no spec, no mission-state, no prior turns.

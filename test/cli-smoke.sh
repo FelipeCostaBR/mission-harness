@@ -31,7 +31,7 @@ git add -A && git commit -qm init
 
 echo "== init =="
 $CLI init > /dev/null
-[ -f contractor.config.json ] || fail "init did not write the config"
+[ -f mission.config.json ] || fail "init did not write the config"
 ok "config scaffolded"
 
 echo "== doctor rejects the stub =="
@@ -43,7 +43,7 @@ ok "stub config rejected"
 echo "== adapt the config =="
 node -e '
 const fs = require("fs");
-const c = JSON.parse(fs.readFileSync("contractor.config.json", "utf8"));
+const c = JSON.parse(fs.readFileSync("mission.config.json", "utf8"));
 c.project = { name: "smoke", description: "" };
 c.areas = [
   { slug: "billing", pathGlobs: ["src/billing/**", "test/billing/**"], surface: "service" },
@@ -57,7 +57,7 @@ c.protectedPaths = [
 ];
 c.testGlobs = ["test/**"];
 c.additivePairs = [{ primary: "db/schema.prisma", generated: "db/migrations/**" }];
-fs.writeFileSync("contractor.config.json", JSON.stringify(c, null, 2));
+fs.writeFileSync("mission.config.json", JSON.stringify(c, null, 2));
 '
 $CLI doctor > /dev/null || fail "doctor rejected a valid config"
 ok "doctor passes"
@@ -76,14 +76,14 @@ ok "escalations route correctly"
 
 echo "== mission lifecycle =="
 $CLI mission new demo > /dev/null
-M=.contractor/missions/demo
+M=docs/prd/demo
 [ -f "$M/mission-state.json" ] || fail "mission-state not scaffolded"
 [ -f "$M/spec.md" ] || fail "spec template not scaffolded"
 
 $CLI arm "$M" > /dev/null
 $CLI status | grep -q ARMED || fail "mission did not arm"
 node -e '
-const s = require("fs").readFileSync(".contractor/missions/demo/mission-state.json", "utf8");
+const s = require("fs").readFileSync("docs/prd/demo/mission-state.json", "utf8");
 if (!JSON.parse(s).queueSubstrate) { console.error("queueSubstrate not recorded at arm time"); process.exit(1); }
 ' || fail "arm did not record the queue substrate probe"
 ok "armed, substrate probed"
@@ -97,7 +97,7 @@ ok "edit routing queues owned paths only"
 echo "== advance decision =="
 node -e '
 const fs = require("fs");
-const p = ".contractor/missions/demo/mission-state.json";
+const p = "docs/prd/demo/mission-state.json";
 const s = JSON.parse(fs.readFileSync(p, "utf8"));
 s.milestones = [{ id: "M1", order: 1, status: "pending", features: ["F1"], assertions: ["A-1"] }];
 s.currentMilestone = "M1";
@@ -114,7 +114,7 @@ adv | grep -q CORRECTIVE || fail "a failing assertion should yield CORRECTIVE"
 
 node -e '
 const fs = require("fs");
-const p = ".contractor/missions/demo/mission-state.json";
+const p = "docs/prd/demo/mission-state.json";
 const s = JSON.parse(fs.readFileSync(p, "utf8"));
 s.assertionStatus = { "A-1": "failing" };
 s.correctiveRounds = { M1: 2 };
@@ -124,13 +124,13 @@ adv | grep -q CIRCUIT-BREAK || fail "the cap should yield CIRCUIT-BREAK"
 
 node -e '
 const fs = require("fs");
-const p = ".contractor/missions/demo/mission-state.json";
+const p = "docs/prd/demo/mission-state.json";
 const s = JSON.parse(fs.readFileSync(p, "utf8"));
 s.assertionStatus = { "A-1": "passing" };
 s.correctiveRounds = { M1: 0 };
 s.integrationGate.passed = true;
 fs.writeFileSync(p, JSON.stringify(s, null, 2));
-fs.writeFileSync(".contractor/missions/demo/verdicts/M1-billing.json", JSON.stringify({
+fs.writeFileSync("docs/prd/demo/verdicts/M1-billing.json", JSON.stringify({
   area: "billing",
   verdicts: [{ id: "A-1", verdict: "pass", evidence: "npm test exit 0" }],
   boundaryViolations: [], missingDefaults: [], testGaps: []
@@ -142,7 +142,7 @@ ok "advance decisions correct"
 echo "== gated is not done =="
 node -e '
 const fs = require("fs");
-const p = ".contractor/missions/demo/mission-state.json";
+const p = "docs/prd/demo/mission-state.json";
 const s = JSON.parse(fs.readFileSync(p, "utf8"));
 s.assertionStatus = { "A-1": "skipped" };
 fs.writeFileSync(p, JSON.stringify(s, null, 2));
@@ -151,10 +151,10 @@ adv | grep -q "must NOT be recorded done" || fail "an unverifiable assertion sho
 ok "gated state surfaced"
 
 echo "== brief =="
-$CLI brief > /tmp/contractor-brief.$$ || fail "brief exited non-zero"
-grep -q "Mission rehydration brief" /tmp/contractor-brief.$$ || fail "brief did not render"
-[ "$(wc -c < /tmp/contractor-brief.$$)" -le 6000 ] || fail "brief exceeded its hard budget"
-rm -f /tmp/contractor-brief.$$
+$CLI brief > /tmp/mission-brief.$$ || fail "brief exited non-zero"
+grep -q "Mission rehydration brief" /tmp/mission-brief.$$ || fail "brief did not render"
+[ "$(wc -c < /tmp/mission-brief.$$)" -le 6000 ] || fail "brief exceeded its hard budget"
+rm -f /tmp/mission-brief.$$
 ok "brief renders within budget"
 
 echo "== disarm =="
