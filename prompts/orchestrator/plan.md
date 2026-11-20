@@ -147,7 +147,22 @@ A milestone is the set of features that together cover one coherent slice of the
 contract. Honour the spec's own proposed partition as a starting point; revise
 only with a reason. Then write `mission-state.json`: milestones (each with
 `order` and `status`), `assertionStatus` (all `pending`), `globalConstraints`
-(your config's `constraints`), per-feature `procedures`, and the seats.
+(your config's `constraints`), per-feature `procedures`, and a `features{}` map
+(`{ "<id>": { "module": "<area slug>", "surface": "<surface>", "pathGlobs"?: [...] } }`)
+so each worker's grant survives a context reset.
+
+Give each milestone a `sizeTier` from the contract text it must satisfy:
+
+```
+contractor size <missionDir> --assertions <comma-separated ids>
+```
+
+(`small | normal | large`; it picks the worker's start rung on the seat ladder.)
+
+This is the **one** time you write `mission-state.json` directly. From approval
+on, every change goes through `contractor state` (see the mission prompt). Run
+`contractor check <missionDir>` on what you wrote and fix every error before you
+render the approval summary.
 
 ### 4a. Coverage gate — every assertion has an owner that can actually build it
 

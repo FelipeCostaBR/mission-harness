@@ -112,7 +112,16 @@ said `live`**. Clear `scopeOverride` once the milestone is validated.
 ## 4. Spawn the workers
 
 For each feature, spawn one worker with the prompt from `contractor prompt
-seats/worker` (or `seats/ui-worker` for a surface that renders an interface).
+seats/worker` (or `seats/ui-worker` for a surface that renders an interface), at
+the seat the ladder returns for the milestone's size tier:
+
+```
+contractor seat resolve '{"role":"worker","sizeTier":"<milestone sizeTier>"}'
+```
+
+Spawn with exactly the returned model and effort. Record the worker as active
+before it starts (`contractor state <missionDir> set-field activeWorker '"<feature>"'`)
+and clear it when its digest lands, so a reset mid-worker is visible in the brief.
 
 Pass in the payload:
 
@@ -187,7 +196,8 @@ grant, never a blanket grant over a shared directory), the assertions it unblock
 and `missionDir`. It writes `handoffs/ESC-<id>.json` and returns a digest.
 
 **You MUST record the `escalations[]` entry with `implementedBy:
-"escalation-worker"`.** The fresh-validator spawn at the boundary keys on exactly
+"escalation-worker"`**, through the CLI:
+`contractor state <missionDir> upsert-escalation <id> '{"status":"in-progress","route":"delegate","implementedBy":"escalation-worker","files":[...],"reason":"..."}'`. The fresh-validator spawn at the boundary keys on exactly
 that marker. Without it, no validator ever spawns, the creator/verifier split
 silently does not happen, and nothing tells you — which is why `contractor check`
 treats a missing marker as an error.

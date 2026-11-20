@@ -115,6 +115,12 @@ from the touched-area set:
   generated types disagree with the schema.
 - **Every escalation's `verifiedBy` commands**, re-run. An escalation with no
   `verifiedBy` evidence FAILS the gate.
+- **The commit boundary**, over the milestone's commits:
+  `contractor commits <missionDir> <base>..HEAD`. Every touched path must sit
+  inside a grant of the feature or escalation that claims the commit; a
+  protected path is a violation whatever the grant.
+
+Record the result with `contractor state <missionDir> set-gate integration '<json>'`.
 
 **Run quiet.** Redirect each command's output to a log and ingest only the exit
 code: `<cmd> > /tmp/gate-N.log 2>&1; echo "exit=$?"`. On a RED command do not
@@ -169,9 +175,17 @@ If a validator did not return, its verdict file is absent → that area is
 **failing by default**, never assumed-pass.
 
 **b. Mechanical derivation.** Compute `assertionStatus` STRICTLY from the
-persisted files. An assertion is `passing` only if its verdict literally says so.
-You may not write `assertionStatus` from expectation, and may not write it before
-every validator's file exists.
+persisted files, with the CLI doing the derivation:
+
+```
+contractor state <missionDir> record-verdict <milestone> verdicts/<name>.json
+```
+
+It reads the raw file, re-derives every assertion id it touches by the same
+rule `set-assertion` enforces (the newest verdicts must unanimously pass), and
+writes the evidence before the derived state. You may not write
+`assertionStatus` from expectation, and may not write it before every
+validator's file exists.
 
 Any `"verdict": "fail"`, **any** `boundaryViolations[]`, or **any**
 `missingDefaults[]` makes the bound assertion `failing`. These are hard blockers,
@@ -207,8 +221,14 @@ milestone done.
 
 For a real failure:
 
-- **Increment `correctiveRounds[milestone]` AND append to `roundLog[]`** with
-  `{ milestone, round, type: "corrective", trigger: [...], at: <ISO-8601>, seat }`.
+- **Open the round with one command**, which increments
+  `correctiveRounds[milestone]` AND appends the stamped `roundLog[]` entry in a
+  single atomic write:
+
+  ```
+  contractor state <missionDir> bump-round <milestone> --type corrective \
+    --trigger '<failed ids>' --seat <model/effort> --note "<one line>"
+  ```
 
   ⚠️ **The increment is not bookkeeping, it is the safety mechanism.** Two rules
   read that counter and nothing else: the circuit breaker, and the worker-seat
@@ -219,11 +239,18 @@ For a real failure:
 - **Always stamp `at`.** Without it a retro can count rounds but never measure
   them, and "this mission took three days" cannot be attributed to any stage.
 
-- **Pick the worker seat for the round** from `contractor advance`'s output. It
-  keeps the cheap seat for the first attempt and escalates to the frontier tier
-  for the FINAL round before the breaker would hand off to a human — spending the
-  expensive seat only where the cheap one is visibly struggling. Record the seat
-  in the round log so a retro can tell whether it helped.
+- **Pick the worker seat for the round** from the seat ladder, BEFORE you bump:
+
+  ```
+  contractor seat corrective <missionDir> <milestone> --cause <assertion|gate|spec> --triggers '<failed ids>'
+  ```
+
+  The worker climbs one rung per failure, two when the same check failed in the
+  previous round, and never above its ceiling. A `spec` cause never climbs —
+  the contract is wrong, so fix the contract, not the seat. Pass the returned
+  `<model>/<effort>` as `--seat` so a retro can tell whether the climb helped.
+  A red **gate** with a clear cause in one area goes to the fixer seat
+  (`contractor prompt seats/fixer`) rather than a fresh worker.
 
 - **Under the cap:** scope follow-up feature(s) targeting exactly the failing
   assertions, with procedures sharpened by the validator's notes. Hand back to
@@ -283,7 +310,8 @@ The milestone boundary is the only point where mission state is provably
 consistent — verdicts persisted, gate green, commits made, no worker in flight —
 so it is the only safe place to reset your window.
 
-**Record the knowledge half** in `mission-state.json`:
+**Record the knowledge half** with `contractor state add-decision` and
+`contractor state add-constraint`:
 
 - **`decisions[]`** — `{ milestone, decision, why }` for each choice a later
   window would otherwise relitigate. Include the approach **rejected** and why;

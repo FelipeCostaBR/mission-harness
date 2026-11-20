@@ -67,6 +67,66 @@ So:
   persisted, gate green, commits made, no worker in flight. A percentage-triggered
   reset can land mid-worker and checkpoint a torn state.
 
+## Every state write goes through `contractor state`
+
+After the plan's one-time initial authoring of `mission-state.json`, never edit
+that file by hand, with a heredoc, `node -e` or `jq`. Use the CLI:
+
+```
+contractor state <missionDir> <command> [args]     # `contractor state help` lists them
+```
+
+Each command takes a lock, re-checks bookkeeping, refuses a write that would add
+an error, and writes atomically. The ones you use most:
+
+| When | Command |
+| --- | --- |
+| a verdict file lands | `record-verdict <milestone> <verdicts/file.json>` (derives assertion states from it) |
+| the integration gate ran | `set-gate integration '<json>'` |
+| a corrective round opens | `bump-round <milestone> --type corrective --trigger <ids> --seat <model/effort>` |
+| an escalation is routed or proven | `upsert-escalation <id> '<json>'` (a `verifiedBy` record must be re-runnable: command, exit 0, evidence, readOnly) |
+| a boundary checkpoint | `add-decision <milestone> "<decision>" --why "<why>"`, `add-constraint … --impact …` |
+| a milestone closes | `set-milestone-status <milestone> done`, then `set-field currentMilestone '"M2"'` |
+
+`set-assertion <id> passing` is refused unless the newest verdicts for that id
+unanimously pass. There is no flag around it, on purpose.
+
+## Spawn every seat at the seat the ladder gives
+
+Do not pick models by feel. Ask the rule:
+
+```
+contractor seat resolve '{"role":"worker","sizeTier":"normal"}'
+contractor seat corrective <missionDir> <milestone> --cause <assertion|gate|spec> --triggers '<failed ids>'
+```
+
+It returns `{model, effort, rung, reason}`. Spawn with exactly that model and
+effort, and record the seat (`<model>/<effort>`) on the round. A role climbs a
+rung only on a failure its ladder entry lists; a `spec` failure never climbs —
+the contract is wrong, not the seat. `contractor size <milestone>` gives the
+milestone's size tier, which picks the worker's start rung.
+
+## Ask the scout instead of reading source
+
+When you need to know how the code works, spawn a **scout**
+(`contractor prompt seats/scout`) with one question. Its reply is schema-forced:
+an answer of at most 600 characters, `file:line` citations quoted from lines it
+read this turn, and a confidence. Trust a `high`/`medium` reply without
+re-opening its sources. Every file you read yourself is context you cannot spend
+on adjudication.
+
+A red gate or a single-area corrective goes to the **fixer**
+(`contractor prompt seats/fixer`): it gets the gate, the log path and a grant
+that excludes the failing test.
+
+## Know which checkout you are in
+
+If the mission runs in a git worktree, resolve the mission's root explicitly
+and run every `contractor` command from it. A shell whose working directory
+drifted into another checkout resolves another config, another flag and another
+`mission-state.json`, and every write lands in the wrong place while reporting
+success. Check with `git rev-parse --show-toplevel` before arming.
+
 ## Delegate implementation. All of it.
 
 Your judgement is the scarce thing; typing is not. Every line of code you write
