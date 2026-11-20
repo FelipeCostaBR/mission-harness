@@ -10,6 +10,7 @@
 import { readFileSync, existsSync } from "node:fs"
 import { join, dirname, resolve } from "node:path"
 import { execFileSync } from "node:child_process"
+import { DEFAULT_SEAT_TABLE } from "./rules/seat-ladder.mjs"
 
 export const CONFIG_FILENAME = "contractor.config.json"
 export const STATE_DIRNAME = ".contractor"
@@ -61,6 +62,8 @@ export const DEFAULT_CONFIG = {
     reviewer: { tier: "frontier", runtime: "subagent", readOnly: true },
   },
   models: {},
+  // null = the built-in ladder (src/rules/seat-ladder.default.json).
+  seatLadder: null,
   policy: {
     maxCorrectiveRounds: 2,
     escalateSeatAfterRounds: 1,
@@ -132,6 +135,14 @@ export function resolveModel(config, tier, runtime = "default") {
   if (!entry) return tier
   if (typeof entry === "string") return entry
   return entry[runtime] ?? entry.default ?? tier
+}
+
+/**
+ * The seat-ladder table this project runs on: `seatLadder` from the config when
+ * set (a full replacement, validated by `contractor doctor`), else the default.
+ */
+export function seatTable(config) {
+  return isObj(config?.seatLadder) ? config.seatLadder : DEFAULT_SEAT_TABLE
 }
 
 /**

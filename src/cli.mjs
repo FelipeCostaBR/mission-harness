@@ -23,6 +23,7 @@ import {
   pathGlobsByArea,
   escalationConfig,
   resolveModel,
+  seatTable,
   CONFIG_FILENAME,
   STATE_DIRNAME,
 } from "./config.mjs"
@@ -43,7 +44,8 @@ import { partitionDisjoint } from "./rules/partition.mjs"
 import { decideSelfHeal } from "./rules/self-heal.mjs"
 import { resumePlan } from "./rules/resume.mjs"
 import { routeEscalation } from "./rules/escalation-route.mjs"
-import { resolveWorkerSeat, SEAT_LADDER } from "./rules/worker-seat.mjs"
+import { correctiveSeatFromState, runCLI as runSeatCLI } from "./rules/seat-ladder.mjs"
+import { runCLI as runPlanSizeCLI } from "./rules/plan-size.mjs"
 import {
   checkBookkeeping,
   checkHandoffMeta,
@@ -237,17 +239,22 @@ function cmdDoctor() {
     }
   }
 
-  // --- seats + models
+  // --- seat ladder + models
+  const table = seatTable(config)
+  const rungIds = new Set((table.ladder ?? []).map((r) => r.id))
+  for (const [role, seat] of Object.entries(table.roles ?? {})) {
+    for (const k of ["start", "ceiling"]) {
+      if (!rungIds.has(seat?.[k])) add("error", "seat-bad-rung", `seatLadder role "${role}" ${k} "${seat?.[k]}" is not a ladder rung.`)
+    }
+  }
+  if (config.models && Object.keys(config.models).length) {
+    for (const model of new Set((table.ladder ?? []).map((r) => r.model))) {
+      if (!config.models[model]) add("warn", "seat-unmapped", `Ladder model "${model}" has no entry in models{}; it passes through literally (right for Claude Code's own aliases).`)
+    }
+  }
   for (const [seat, def] of Object.entries(config.seats ?? {})) {
-    if (!def?.tier) {
-      add("error", "seat-no-tier", `Seat "${seat}" has no tier.`)
-      continue
-    }
-    if (!SEAT_LADDER.includes(def.tier)) {
-      add("warn", "seat-off-ladder", `Seat "${seat}" tier "${def.tier}" is not on the default ladder [${SEAT_LADDER.join(", ")}]. Fine if you set policy.ladder.`)
-    }
-    if (config.models && Object.keys(config.models).length && !config.models[def.tier]) {
-      add("warn", "seat-unmapped", `Tier "${def.tier}" (seat "${seat}") has no entry in models{} — it will pass through literally.`)
+    if (seat === "validator" && def?.readOnly !== true) {
+      add("error", "validator-not-readonly", `seats.validator must be readOnly: a validator that can edit fixes what it was asked to judge.`)
     }
   }
   if (config.seats?.validator && config.seats.validator.readOnly !== true) {
@@ -528,11 +535,7 @@ function cmdAdvance(args) {
     maxRounds,
   })
 
-  const seat = resolveWorkerSeat({
-    correctiveRounds: rounds,
-    baseSeat: config.seats?.worker?.tier ?? "standard",
-    escalateAfterRounds: config.policy?.escalateSeatAfterRounds ?? 1,
-  })
+  const seat = correctiveSeatFromState(state, milestoneId, { cause: gateGreen ? "assertion" : "gate" }, seatTable(config))
 
   out(bold(`advance check — ${missionDir} · ${milestoneId}`))
   out("")
@@ -555,7 +558,7 @@ function cmdAdvance(args) {
   out(`  ${bold("DECISION")}: ${color(decision.action.toUpperCase())}`)
   out(`  ${dim(decision.reason)}`)
   if (decision.action === "corrective") {
-    out(`  ${dim(`next worker seat: ${seat.seat}${seat.escalated ? " (escalated)" : ""} — ${seat.reason}`)}`)
+    out(`  ${dim(`next worker seat: ${seat.model}/${seat.effort} (${seat.rung}${seat.climbed ? ", climbed" : ""}) — ${seat.reason}`)}`)
   }
   if (decision.action !== "advance") process.exitCode = 2
 }
@@ -811,6 +814,9 @@ ${bold("Missions")}
                               run \`contractor state help\` for its commands
 
 ${bold("Decisions")} ${dim("(pure rules, evaluated against the mission's artifacts)")}
+  seat resolve '<json>'       the model + effort a role's next spawn runs on
+  seat corrective [dir] <ms> --cause <assertion|gate|spec> --triggers '<ids>'
+  size [dir] <milestone>      small | normal | large (picks the worker's start rung)
   check [missionDir]          bookkeeping invariants
   advance [missionDir] [ms]   advance / corrective / circuit-break
   partition [milestone] [dir] which features may run in parallel
@@ -842,6 +848,41 @@ function cmdState(args) {
   process.exitCode = r.exitCode
 }
 
+/**
+ * `contractor seat resolve '<json>'` and
+ * `contractor seat corrective [missionDir] <milestone> --cause <c> --triggers '<ids>'`:
+ * the seat (model + effort) the next spawn of a role runs on, from the
+ * project's seat ladder. Pure; writes nothing.
+ */
+function cmdSeat(args) {
+  const { root, config } = loadConfig()
+  const table = seatTable(config)
+  if (args[0] === "corrective") {
+    const rest = args.slice(1)
+    const positional = rest.filter((a, i) => !a.startsWith("--") && !(i > 0 && rest[i - 1].startsWith("--")))
+    const missionDir = resolveMission(root, positional.length >= 2 ? positional[0] : null)
+    const abs = isAbsolute(missionDir) ? missionDir : join(root, missionDir)
+    const flagArgs = rest.slice(rest.findIndex((a) => a.startsWith("--")) >= 0 ? rest.findIndex((a) => a.startsWith("--")) : rest.length)
+    const milestone = positional[positional.length - 1]
+    return emit(runSeatCLI(["corrective-seat", abs, milestone, ...flagArgs], table))
+  }
+  return emit(runSeatCLI(args, table))
+}
+
+/** `contractor size [missionDir] <milestone>`: small | normal | large. */
+function cmdSize(args) {
+  const { root } = loadConfig()
+  const missionDir = resolveMission(root, args.length >= 2 ? args[0] : null)
+  const abs = isAbsolute(missionDir) ? missionDir : join(root, missionDir)
+  return emit(runPlanSizeCLI([abs, args[args.length - 1]]))
+}
+
+function emit(r) {
+  if (r.stdout) process.stdout.write(r.stdout)
+  if (r.stderr) process.stderr.write(r.stderr)
+  process.exitCode = r.exitCode
+}
+
 async function main() {
   const [, , cmd, ...args] = process.argv
   switch (cmd) {
@@ -856,6 +897,10 @@ async function main() {
       return cmdArm(args)
     case "state":
       return cmdState(args)
+    case "seat":
+      return cmdSeat(args)
+    case "size":
+      return cmdSize(args)
     case "disarm":
       return cmdDisarm(args)
     case "status":

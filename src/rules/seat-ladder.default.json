@@ -1,0 +1,46 @@
+{
+  "ladder": [
+    { "id": "L0", "model": "haiku", "effort": "low" },
+    { "id": "L1", "model": "haiku", "effort": "medium" },
+    { "id": "L2", "model": "sonnet", "effort": "medium" },
+    { "id": "L3", "model": "sonnet", "effort": "high" },
+    { "id": "L4", "model": "opus", "effort": "high" },
+    { "id": "L5", "model": "opus", "effort": "xhigh" },
+    { "id": "L6", "model": "opus", "effort": "max" }
+  ],
+  "roles": {
+    "worker": {
+      "start": "L3",
+      "sizeStart": { "small": "L3", "normal": "L3", "large": "L3" },
+      "ceiling": "L5",
+      "climbOn": ["assertion", "gate"]
+    },
+    "simplify": { "start": "L3", "ceiling": "L3", "climbOn": [] },
+    "scout": { "start": "L3", "ceiling": "L4", "climbOn": ["schema", "low-confidence"] },
+    "fixer": { "start": "L3", "ceiling": "L5", "climbOn": ["gate-repeat"] },
+    "verifier": { "start": "L2", "ceiling": "L3", "climbOn": ["gate-repeat"] },
+    "validator": { "start": "L5", "ceiling": "L6", "climbOn": ["recheck", "dispute"] },
+    "screenshot-validator": { "start": "L5", "ceiling": "L6", "climbOn": ["ambiguous"] },
+    "reviewer": { "start": "L5", "ceiling": "L6", "climbOn": [], "model": "opus[1m]" }
+  },
+  "profiles": {
+    "current": {},
+    "cheap": {
+      "worker": { "sizeStart": { "small": "L2", "normal": "L2", "large": "L3" } },
+      "simplify": { "start": "L2" },
+      "scout": { "start": "L2" },
+      "fixer": { "start": "L2" },
+      "validator": { "start": "L4" },
+      "screenshot-validator": { "start": "L4" },
+      "reviewer": { "start": "L4" }
+    }
+  },
+  "sessionSeats": {
+    "planner": { "model": "opus", "effort": "xhigh" },
+    "orchestrator": {
+      "model": "opus",
+      "effort": "xhigh",
+      "trial": { "model": "sonnet", "effort": "high" }
+    }
+  }
+}
