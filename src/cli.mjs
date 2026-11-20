@@ -756,6 +756,34 @@ function collectPrompts(dir, prefix = "") {
   return acc
 }
 
+/**
+ * Merge the harness hooks into `.claude/settings.json`, keeping every hook the
+ * project already has. Idempotent: a command already present is not added
+ * again. Returns how many hook commands were added.
+ */
+function mergeClaudeHooks(root, snippetPath) {
+  const snippet = readJson(snippetPath, { hooks: {} })
+  const settingsPath = join(root, ".claude", "settings.json")
+  const settings = readJson(settingsPath, {}) ?? {}
+  settings.hooks = settings.hooks ?? {}
+  let added = 0
+  for (const [event, groups] of Object.entries(snippet.hooks ?? {})) {
+    const existing = (settings.hooks[event] = settings.hooks[event] ?? [])
+    const present = new Set(existing.flatMap((g) => (g.hooks ?? []).map((h) => h.command)))
+    for (const group of groups) {
+      const fresh = (group.hooks ?? []).filter((h) => !present.has(h.command))
+      if (!fresh.length) continue
+      existing.push({ ...group, hooks: fresh })
+      added += fresh.length
+    }
+  }
+  if (added) {
+    mkdirSync(join(root, ".claude"), { recursive: true })
+    writeJson(settingsPath, settings)
+  }
+  return added
+}
+
 function cmdInstall(args) {
   const adapter = args[0]
   const adaptersDir = join(PKG_ROOT, "adapters")
@@ -775,16 +803,28 @@ function cmdInstall(args) {
   }
   const { root } = findProjectRoot()
   const src = join(adaptersDir, adapter)
+  const force = args.includes("--force")
   const copied = []
   for (const entry of readdirSync(src, { withFileTypes: true })) {
     if (entry.name === "README.md") continue
     const from = join(src, entry.name)
     const to = join(root, entry.name)
-    cpSync(from, to, { recursive: true, force: false, errorOnExist: false })
+    // --force refreshes the harness's own files after an upgrade; without it a
+    // file the project has edited is never overwritten.
+    cpSync(from, to, {
+      recursive: true,
+      force,
+      errorOnExist: false,
+      filter: (f) => !f.endsWith("-settings-snippet.json"),
+    })
     copied.push(relative(root, to))
   }
-  out(`${green("✓")} installed the ${adapter} adapter into ${root}`)
+  out(`${green("✓")} installed the ${adapter} adapter into ${root}${force ? " (refreshed)" : ""}`)
   for (const c of copied) out(`    ${c}/`)
+  if (adapter === "claude-code") {
+    const added = mergeClaudeHooks(root, join(src, ".claude", "mission-harness-settings-snippet.json"))
+    out(added ? `    .claude/settings.json  ${dim(`(+${added} hook${added === 1 ? "" : "s"})`)}` : `    .claude/settings.json  ${dim("(hooks already present)")}`)
+  }
   out("")
   out(`Wiring instructions (hooks, seats, model tiers):`)
   out(`    ${dim(join(src, "README.md"))}`)
@@ -828,6 +868,7 @@ ${bold("Decisions")} ${dim("(pure rules, evaluated against the mission's artifac
 ${bold("Hook")}
   route                       PostToolUse entry (reads the event on stdin)
   route --resolve             probe whether the flag resolves from here
+  compact                     PreCompact entry: stamps a compactions[] breadcrumb
 
 Docs: https://github.com/FelipeCostaBR/contractor
 `
@@ -908,6 +949,39 @@ function cmdCommits(args) {
   if (!report.ok) process.exitCode = 1
 }
 
+/**
+ * `mission compact` — the PreCompact hook. When a mission is armed and active,
+ * stamps a `compactions[]` breadcrumb through the state CLI before the lossy
+ * auto-summary destroys the window, so a retro can see where windows broke.
+ * Silent and never failing outside a mission: a hook must not break a session.
+ */
+async function cmdCompact() {
+  let root
+  try {
+    ;({ root } = loadConfig())
+  } catch {
+    return
+  }
+  const c = check(root)
+  if (!c.armed || !c.missionDir) return
+  const state = readState(root, c.missionDir)
+  if (!state || state.missionStatus !== "active") return
+  let event = {}
+  try {
+    const raw = process.stdin.isTTY ? "" : readFileSync(0, "utf8")
+    event = raw ? JSON.parse(raw) : {}
+  } catch {
+    event = {}
+  }
+  const item = {
+    at: typeof state.currentMilestone === "string" ? state.currentMilestone : null,
+    reason: typeof event.trigger === "string" && event.trigger ? event.trigger : "compact",
+    session: typeof event.session_id === "string" ? event.session_id : null,
+  }
+  const abs = isAbsolute(c.missionDir) ? c.missionDir : join(root, c.missionDir)
+  runStateCLI([abs, "append", "compactions", JSON.stringify(item)])
+}
+
 function emit(r) {
   if (r.stdout) process.stdout.write(r.stdout)
   if (r.stderr) process.stderr.write(r.stderr)
@@ -937,6 +1011,8 @@ async function main() {
       return cmdSize(args)
     case "commits":
       return cmdCommits(args)
+    case "compact":
+      return cmdCompact(args)
     case "disarm":
       return cmdDisarm(args)
     case "status":
@@ -983,7 +1059,7 @@ main().catch((e) => {
     return
   }
   // `route` runs as a hook: it must never break the agent's tool loop.
-  if (process.argv[2] === "route") {
+  if (process.argv[2] === "route" || process.argv[2] === "compact") {
     err(`[mission route] ${e?.message ?? e}`)
     return
   }

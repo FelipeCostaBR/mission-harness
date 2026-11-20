@@ -1,20 +1,21 @@
 {
-  "//": "Merge these hooks into your .claude/settings.json. Do NOT replace the file — you almost certainly have hooks of your own.",
-
-  "//PostToolUse": "Routes every edit to its owning area and appends it to the armed mission's queue. Inert outside a mission: no flag, or a missionStatus that is not 'active', and it no-ops. It never blocks and never fails a tool call.",
-
-  "//SessionStart": "Injects the mission rehydration brief (<=6KB) whenever a mission is armed and active. This is the whole point of the brief: a fresh window inherits position AND knowledge for ~1.5k tokens instead of re-deriving it from source, which costs orders of magnitude more. Silent when no mission is running.",
+  "//": "`mission install claude-code` merges these hooks into .claude/settings.json for you. Each command is a no-op when the mission CLI is not on PATH or no mission is armed, so the hooks never block a session.",
 
   "hooks": {
     "PostToolUse": [
       {
         "matcher": "Edit|Write|MultiEdit",
-        "hooks": [{ "type": "command", "command": "mission route" }]
+        "hooks": [{ "type": "command", "command": "command -v mission >/dev/null 2>&1 || exit 0; mission route" }]
       }
     ],
     "SessionStart": [
       {
-        "hooks": [{ "type": "command", "command": "mission brief --only-active" }]
+        "hooks": [{ "type": "command", "command": "command -v mission >/dev/null 2>&1 || exit 0; mission brief --only-active" }]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [{ "type": "command", "command": "command -v mission >/dev/null 2>&1 || exit 0; mission compact" }]
       }
     ]
   }

@@ -57,16 +57,39 @@ mechanism, not a detail:
 | escalation worker | `mission-escalation-worker` |
 | plan reviewer | `mission-reviewer` (read-only) |
 | simplifier | `mission-simplifier` |
+| scout (code questions) | `mission-scout` (read-only) |
+| fixer (red gate) | `mission-fixer` |
 
-Set each spawn's `model` from `seats` in `mission.config.json`, resolved
-through `models` for the `claude-code` runtime.
+Set each spawn's `model` and `effort` from the seat ladder, never by feel:
+
+```bash
+mission seat resolve '{"role":"worker","sizeTier":"normal"}'   # {model, effort, rung, reason}
+mission seat corrective <missionDir> <milestone> --cause gate --triggers '["GATE-1"]'
+```
+
+Roles on the ladder: worker, simplify, scout, fixer, verifier, validator,
+screenshot-validator (UI validator), reviewer.
 
 Keep the spawn prompt's **shape** stable across features, varying only the
 payload — stable prefixes hit the prompt cache.
 
+## State — every write goes through the CLI
+
+After the plan's one-time authoring, never edit `mission-state.json` by hand:
+
+```bash
+mission state <missionDir> <command> [args]    # mission state help
+```
+
+It locks, re-checks bookkeeping, refuses a write that adds an error, and writes
+atomically. `record-verdict`, `set-gate`, `bump-round`, `upsert-escalation`,
+`add-decision` and `add-constraint` are the ones each milestone uses.
+
 ## Deterministic decisions — use the CLI, do not re-derive
 
 ```bash
+mission size <milestone>             # small | normal | large
+mission commits <base>..HEAD         # every commit stays inside its grant
 mission partition <milestone>     # which features may run in parallel
 mission escalate <files…>         # inline or delegate, and the worker's grant
 mission advance                   # advance / corrective / circuit-break
