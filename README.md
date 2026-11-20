@@ -1,4 +1,4 @@
-# Contractor
+# Mission Harness
 
 **The contract-first multi-agent build harness.**
 
@@ -16,14 +16,14 @@ records what it learned into the mission's artifacts, which is the only memory
 that survives a context window.*
 
 ```bash
-npm install -g contractor-harness
+npm install -g mission-harness
 cd your-project
 
-contractor init                       # scaffold
-contractor prompt init                # hand this to your agent — it adapts the harness to YOUR repo
-contractor doctor                     # verify the adaptation against reality
+mission init                       # scaffold
+mission prompt init                # hand this to your agent — it adapts the harness to YOUR repo
+mission doctor                     # verify the adaptation against reality
 
-contractor mission new csv-export     # then write the spec and run it
+mission new csv-export     # then write the spec and run it
 ```
 
 Works with Claude Code, Codex, Cursor, or a person pasting prompts into a chat
@@ -48,7 +48,7 @@ The failures are rarely "the model could not write the function". They are:
 - **It said done.** The part that mattered was never verified.
 
 More capable models make this *worse*, not better, because the output is more
-plausible. Contractor is the harness that makes those failures visible.
+plausible. Mission Harness is the harness that makes those failures visible.
 
 ## How it works
 
@@ -101,7 +101,7 @@ its way past a paragraph.
 **5. The mission survives its own context window.**
 A real mission spans many windows, and **most of what a fresh window spends goes
 on re-orientation** — re-reading source to rediscover what the last one knew.
-`contractor brief` reconstructs position *and* accumulated knowledge in ≤6KB, so
+`mission brief` reconstructs position *and* accumulated knowledge in ≤6KB, so
 a reset costs a couple of thousand tokens instead of a hundred thousand.
 
 ## Adapting it to your codebase
@@ -110,9 +110,9 @@ The harness knows nothing about your repository until you tell it. That is one
 file, and you do not write it by hand:
 
 ```bash
-contractor prompt init > /tmp/init.md
+mission prompt init > /tmp/init.md
 # "Follow /tmp/init.md against this repository."
-contractor doctor
+mission doctor
 ```
 
 The prompt makes your agent survey the repo — build system, CI, test layout, git
@@ -122,7 +122,7 @@ reality: do the globs match real files, are the areas disjoint, do the gate
 commands exist, is the validator actually read-only.
 
 ```
-$ contractor doctor
+$ mission doctor
   ERROR area-matches-nothing
         Area "reporting" matches 0 tracked files. Its globs are wrong or the code moved.
   warn  gate-script-missing
@@ -141,17 +141,20 @@ The deterministic half. It never calls a model.
 
 ```
 Setup
-  init                        scaffold contractor.config.json
+  init                        scaffold mission.config.json
   doctor                      validate the config against this repository
+  migrate <agent-routing.json> draft the config from an older harness's registry
   install [adapter]           wire the prompts into an agent runtime
   prompt [name]               print a seat prompt (works with ANY model)
 
 Missions
-  mission new <id>            scaffold a mission folder
+  new <id>                    scaffold a mission folder (docs/prd/<id>/)
   arm <missionDir>            arm edit-routing for a mission
   disarm [status] [dir]       halted | gated | done
   status                      armed state + milestone position
   brief                       the rehydration digest for a fresh context
+  state [dir] <cmd> …         the ONLY way to change mission-state.json after
+                              approval: locked, atomic, bookkeeping-checked
 
 Decisions  (pure rules, evaluated against the mission's artifacts)
   check                       bookkeeping invariants
@@ -159,7 +162,23 @@ Decisions  (pure rules, evaluated against the mission's artifacts)
   partition <milestone>       which features may run in parallel
   escalate <files…>           inline or delegate, and the worker's path grant
   own <paths…>                which area owns a path
+  seat resolve '<json>'       the model + effort a role's next spawn runs on
+  seat corrective <ms> …      the worker seat for the next corrective round
+  size <milestone>            small | normal | large (the worker's start rung)
+  commits <rev-range>         every commit stays inside the grant that claims it
+
+Hooks
+  route                       PostToolUse: queue an edit for its area
+  brief --only-active         SessionStart: inject the brief when a mission is live
+  compact                     PreCompact: stamp a breadcrumb before a lossy summary
 ```
+
+### Writing the PRD
+
+`mission prompt write-a-prd` (the `write-a-prd` skill in Claude Code) interviews
+you, explores the repository in the config's vocabulary, and writes
+`docs/prd/<id>/spec.md` with the four sections the planner depends on:
+Surfaces & Areas, Acceptance Criteria, Escalations and Milestones.
 
 ## The seats
 
@@ -180,6 +199,14 @@ boundary.*
 | **reviewer** | fresh, parallel siblings | **no** | Attacks the plan before code exists |
 | **escalation worker** | fresh | a tight per-escalation grant | Changes protected surfaces |
 | **simplifier** | fresh, no contract | one area's globs | Reuse, dedup, altitude |
+| **scout** | fresh, one question | **no** | Answers a code question with cited lines, so the orchestrator never reads source |
+| **fixer** | fresh, one red gate | a grant that excludes the failing test | Makes a gate pass without touching the test that caught it |
+
+Every seat is spawned at the model and effort the **seat ladder** returns
+(`mission seat resolve`). A role starts at its rung, climbs only on a failure its
+entry lists, never past its ceiling, and never on a spec failure. The default
+ladder runs Haiku to Opus at low to max effort; a project replaces it with
+`seatLadder` in its config.
 
 Note the bottom lane. The advance / corrective / stop decision is not made by any
 of the agents — it is a pure function with a test suite. A model under context
@@ -235,7 +262,7 @@ goes wrong while everything reports green.
 | [protocol.md](docs/protocol.md) | Seats, artifacts, the loop, terminal states |
 | [schemas.md](docs/schemas.md) | Every JSON artifact, annotated |
 | [invariants.md](docs/invariants.md) | The rules, and what breaking each one cost |
-| [configuration.md](docs/configuration.md) | `contractor.config.json` reference |
+| [configuration.md](docs/configuration.md) | `mission.config.json` reference |
 | [models.md](docs/models.md) | Which seats deserve a frontier model, and why |
 | [playbook.md](docs/playbook.md) | Failure modes that pass every check |
 | [faq.md](docs/faq.md) | Honest answers, including when not to use this |
@@ -245,7 +272,7 @@ goes wrong while everything reports green.
 Every decision rule is pure, tested, and importable:
 
 ```js
-import { decideSelfHeal, partitionDisjoint, routeEscalation } from "contractor-harness"
+import { decideSelfHeal, partitionDisjoint, routeEscalation } from "mission-harness"
 ```
 
 No I/O, no clock, no randomness. Build your own runner and the decisions stay

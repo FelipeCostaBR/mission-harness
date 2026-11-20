@@ -205,7 +205,7 @@ context cannot cheaply re-derive.
 ## Worker return — the digest
 
 What the worker RETURNS (~1KB), as opposed to what it writes (the full object).
-`HANDOFF_DIGEST_SCHEMA` in `contractor-harness` is the machine-readable version.
+`HANDOFF_DIGEST_SCHEMA` in `mission-harness` is the machine-readable version.
 
 ```jsonc
 {

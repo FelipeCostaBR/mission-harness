@@ -29,7 +29,7 @@ adjacent thing.
 ## Surfaces & areas
 
 Which parts of the codebase this touches, in the vocabulary of your
-`contractor.config.json`.
+`mission.config.json`.
 
 | Area | What changes | Surface |
 | --- | --- | --- |
@@ -37,7 +37,7 @@ Which parts of the codebase this touches, in the vocabulary of your
 
 **Paths no area owns.** List every path you already know this will need that
 falls outside every area's globs — shared kernels, schema files, generated
-registries, cross-cutting route handlers. Run `contractor own <paths...>` to
+registries, cross-cutting route handlers. Run `mission own <paths...>` to
 find them. These become escalations. Naming them here means they get planned as
 one early batch instead of ambushing five separate milestones one at a time.
 

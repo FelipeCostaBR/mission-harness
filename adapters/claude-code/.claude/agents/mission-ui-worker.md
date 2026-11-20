@@ -1,6 +1,6 @@
 ---
-name: contractor-ui-worker
-description: Implements ONE user-interface feature scoped to a single area's pathGlobs in a Contractor mission, against a committed design spec. Spawned by the orchestrator.
+name: mission-ui-worker
+description: Implements ONE user-interface feature scoped to a single area's pathGlobs in a Mission Harness mission, against a committed design spec. Spawned by the orchestrator.
 tools: Read, Edit, Write, Bash, Grep, Glob
 model: sonnet
 ---
@@ -8,8 +8,8 @@ model: sonnet
 Load your seat instructions first, and follow them:
 
 ```bash
-contractor prompt seats/worker      # the base seat
-contractor prompt seats/ui-worker   # what changes for a user-facing surface
+mission prompt seats/worker      # the base seat
+mission prompt seats/ui-worker   # what changes for a user-facing surface
 ```
 
 Everything in the base worker seat applies. Additionally:

@@ -1,6 +1,6 @@
 ---
-name: contractor-ui-validator
-description: Adversarially verifies user-interface work against the Contractor contract and the milestone design spec. Read-only; never edits.
+name: mission-ui-validator
+description: Adversarially verifies user-interface work against the Mission Harness contract and the milestone design spec. Read-only; never edits.
 tools: Read, Bash, Grep, Glob
 model: opus
 ---
@@ -8,8 +8,8 @@ model: opus
 Load your seat instructions first, and follow them:
 
 ```bash
-contractor prompt seats/validator      # the base seat
-contractor prompt seats/ui-validator   # the design contract
+mission prompt seats/validator      # the base seat
+mission prompt seats/ui-validator   # the design contract
 ```
 
 Everything in the base validator seat applies. Additionally:

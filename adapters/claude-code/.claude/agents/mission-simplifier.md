@@ -1,5 +1,5 @@
 ---
-name: contractor-simplifier
+name: mission-simplifier
 description: Cleans up ONE area's code after a milestone's features are built and before they are validated. Reuse, dedup, readability, altitude. Never changes behaviour.
 tools: Read, Edit, Write, Bash, Grep, Glob
 model: sonnet
@@ -8,7 +8,7 @@ model: sonnet
 Load your seat instructions first, and follow them:
 
 ```bash
-contractor prompt seats/simplifier
+mission prompt seats/simplifier
 ```
 
 You were spawned rather than run inline for a reason: the orchestrator that just

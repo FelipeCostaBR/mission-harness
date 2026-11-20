@@ -1,6 +1,6 @@
 # The protocol
 
-Contractor is a protocol, not a framework. It specifies **seats**, **artifacts**
+Mission Harness is a protocol, not a framework. It specifies **seats**, **artifacts**
 and **gates**. It does not specify a runtime, a provider, or a programming
 language — which is why the same harness runs under Claude Code, Codex, Cursor,
 or a person copy-pasting prompts into a chat window.
@@ -10,7 +10,7 @@ Two halves, deliberately separated:
 | Half | Lives in | Property |
 | --- | --- | --- |
 | **Judgement** — planning, building, adjudicating | `prompts/` | Model-driven, runtime-agnostic |
-| **Determinism** — routing, gating, bookkeeping | `src/` (the `contractor` CLI) | Pure, tested, never calls a model |
+| **Determinism** — routing, gating, bookkeeping | `src/` (the `mission` CLI) | Pure, tested, never calls a model |
 
 The split is the design. Anything a model could rationalise its way around under
 context pressure — "can I try a third corrective round?", "does this count as
@@ -151,7 +151,7 @@ A milestone advances only when **all** of:
 - zero missing defaults,
 - the deterministic integration gate is green.
 
-`contractor advance` computes this from the persisted artifacts. It is not a
+`mission advance` computes this from the persisted artifacts. It is not a
 judgement call.
 
 ### The circuit breaker

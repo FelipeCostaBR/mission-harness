@@ -6,21 +6,21 @@ that adopted the convention.
 ## Install
 
 ```bash
-npm install -g contractor-harness
+npm install -g mission-harness
 cd your-project
-contractor init
-contractor install codex
+mission init
+mission install codex
 ```
 
 That writes `AGENTS.md` at your project root. If you already have one, the
-install will not overwrite it — merge the Contractor section in by hand.
+install will not overwrite it — merge the Mission Harness section in by hand.
 
 ## Adapt
 
 ```bash
-contractor prompt init > /tmp/contractor-init.md
-codex exec "Follow /tmp/contractor-init.md against this repository."
-contractor doctor     # must report zero errors
+mission prompt init > /tmp/mission-init.md
+codex exec "Follow /tmp/mission-init.md against this repository."
+mission doctor     # must report zero errors
 ```
 
 ## What differs from the Claude Code adapter
@@ -28,8 +28,8 @@ contractor doctor     # must report zero errors
 | | Claude Code | Codex |
 | --- | --- | --- |
 | Seat spawning | subagents, declared in `.claude/agents/` | one `codex exec` per seat |
-| Edit routing | automatic (PostToolUse hook) | explicit `contractor route <files>`, or derive scope from handoffs |
-| Brief injection | automatic (SessionStart hook) | run `contractor brief` yourself when reorienting |
+| Edit routing | automatic (PostToolUse hook) | explicit `mission route <files>`, or derive scope from handoffs |
+| Brief injection | automatic (SessionStart hook) | run `mission brief` yourself when reorienting |
 | Read-only validator | enforced by the agent's tool list | enforced by prompt, verified with `git status` |
 
 Everything else is identical: the same prompts, the same CLI, the same artifacts.
@@ -42,12 +42,13 @@ A thin wrapper keeps the spawns consistent:
 
 ```bash
 #!/usr/bin/env bash
-# contractor-seat <seat> <payload-file>
+# mission-seat <seat> <payload-file>
 set -euo pipefail
 seat="$1"; payload="$2"
-tier=$(jq -r ".seats.\"${seat##*/}\".tier // \"standard\"" contractor.config.json)
-model=$(jq -r ".models.\"$tier\".default // \"$tier\"" contractor.config.json)
-codex exec --model "$model" "$(contractor prompt "$seat")
+role="${seat##*/}"; [ "$role" = "ui-validator" ] && role=screenshot-validator
+alias=$(mission seat resolve "{\"role\":\"$role\"}" | jq -r .model)
+model=$(jq -r ".models.\"$alias\".default // \"$alias\"" mission.config.json)
+codex exec --model "$model" "$(mission prompt "$seat")
 
 $(cat "$payload")"
 ```

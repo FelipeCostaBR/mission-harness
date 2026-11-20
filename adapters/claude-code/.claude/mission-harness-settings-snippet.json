@@ -1,0 +1,22 @@
+{
+  "//": "`mission install claude-code` merges these hooks into .claude/settings.json for you. Each command is a no-op when the mission CLI is not on PATH or no mission is armed, so the hooks never block a session.",
+
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [{ "type": "command", "command": "command -v mission >/dev/null 2>&1 || exit 0; mission route" }]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [{ "type": "command", "command": "command -v mission >/dev/null 2>&1 || exit 0; mission brief --only-active" }]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [{ "type": "command", "command": "command -v mission >/dev/null 2>&1 || exit 0; mission compact" }]
+      }
+    ]
+  }
+}

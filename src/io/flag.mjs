@@ -1,8 +1,8 @@
 /**
  * flag.mjs — arm / disarm / check the mission flag, cwd-proof.
  *
- * `.contractor/.active-mission` is what arms the edit-routing hook. Managing it
- * with a bare `rm .contractor/.active-mission` is fragile in a way that has
+ * `.mission/.active-mission` is what arms the edit-routing hook. Managing it
+ * with a bare `rm .mission/.active-mission` is fragile in a way that has
  * actually bitten: if the shell's working directory has drifted (a `cd` inside an
  * earlier compound command persists across later ones), the relative path
  * resolves under the WRONG directory, `rm -f` exits 0, and the real flag survives
@@ -18,6 +18,7 @@
  * soon as the milestone is recorded not-active.
  */
 
+import { runCLI as runStateCLI } from "../state/mission-state.mjs"
 import { readFileSync, writeFileSync, existsSync, rmSync, mkdirSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { NON_ACTIVE_STATUSES } from "../rules/bookkeeping.mjs"
@@ -31,16 +32,12 @@ export function flagPath(root) {
 
 function setMissionStatus(root, missionDir, status) {
   if (!missionDir) return false
-  const statePath = join(root, missionDir, "mission-state.json")
-  if (!existsSync(statePath)) return false
-  try {
-    const state = JSON.parse(readFileSync(statePath, "utf8"))
-    state.missionStatus = status
-    writeFileSync(statePath, JSON.stringify(state, null, 2) + "\n")
-    return true
-  } catch {
-    return false // best-effort; the flag file is the primary switch
-  }
+  const dir = join(root, missionDir)
+  if (!existsSync(join(dir, "mission-state.json"))) return false
+  // Through the state CLI: locked and atomic, so a concurrent writer (a hook,
+  // a parallel CLI call) can never lose this write or read half a file.
+  const r = runStateCLI([dir, "set-status", status])
+  return r.exitCode === 0
 }
 
 /**
@@ -87,7 +84,7 @@ export function disarm(root, status = "halted", missionDirFallback = "") {
     statusWritten,
     warning:
       !missionDir && status !== "halted"
-        ? `flag already gone and no mission folder given — missionStatus="${status}" was NOT written. Re-run: contractor disarm ${status} <missionDir>`
+        ? `flag already gone and no mission folder given — missionStatus="${status}" was NOT written. Re-run: mission disarm ${status} <missionDir>`
         : null,
   }
 }

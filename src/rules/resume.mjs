@@ -1,34 +1,34 @@
 /**
- * resume.mjs — the milestone-level resume rule.
+ * resume.mjs — the missions-harness milestone-level resume rule (B4).
  *
- * A mission survives being killed. On re-invoke it must pick up without redoing
- * passed work. This rule answers the MILESTONE-level question: where do we start
- * again, and which assertions are already settled so they are SKIPPED rather than
- * re-validated?
+ * On kill + re-invoke, the mission must resume from `mission-state.json` WITHOUT
+ * redoing passed work. The Workflow tool's `resumeFromRunId` caches agent
+ * RESULTS; this rule decides, at the MILESTONE level, where to pick up: the first
+ * milestone not yet `done`, plus the milestones/assertions already complete so
+ * they are skipped (not re-validated). Single source of truth; `node --test`-guarded
+ * by `resume.test.mjs`.
  *
  * Pure: no I/O. Reads only the provided mission-state object.
  *
  * @typedef {Object} ResumePlan
- * @property {string|null} nextMilestoneId       first non-`done` milestone (by order), or null
- * @property {string[]}    doneMilestoneIds      completed milestones
+ * @property {string|null} nextMilestoneId      first non-`done` milestone (by order), or null
+ * @property {string[]}    doneMilestoneIds     completed milestones
  * @property {string[]}    remainingMilestoneIds milestones still to run
- * @property {boolean}     allDone               true when every milestone is done
- * @property {string[]}    skipAssertions        bound assertions of done milestones
- * @property {boolean}     degraded              a milestone lacked order/status and a fallback was used
+ * @property {boolean}     allDone              true when every milestone is done
+ * @property {string[]}    skipAssertions       bound assertions of done milestones (already passing)
+ * @property {boolean}     degraded             true when any milestone lacked order/status and a fallback was used
  */
 
 /**
- * `id` is REQUIRED — it is the milestone identity and there is no safe fallback.
- *
- * `order` and `status` are schema-required for new missions, but hand-authored or
- * older state files miss them. Rather than THROW (which makes resume impossible
- * for exactly the mission that most needs it), degrade gracefully: missing
- * `order` → declaration index; missing `status` → "pending", i.e. NOT done. The
- * conservative direction matters: a milestone is re-picked, never silently
- * skipped. `degraded: true` signals the fallback fired so the orchestrator logs it.
- *
+ * `id` is REQUIRED (it is the milestone identity — there is no safe fallback).
+ * `order` and `status` are now schema-required (architecture.md) for new missions,
+ * but older mission-states predate that (e.g. fee-schedule has neither,
+ * kyc-onboarding has no order). Rather than THROW on those — which made
+ * resume impossible for two real missions (retro 2026-06-14 C-01) — degrade
+ * gracefully: missing `order` → declaration index; missing `status` → "pending"
+ * (not-done, the conservative choice — a milestone is re-picked, never silently
+ * skipped). `degraded:true` signals the fallback fired so the orchestrator logs it.
  * @param {{milestones: Array<{id:string, order?:number, status?:string, assertions?:string[]}>}} missionState
- * @returns {ResumePlan}
  */
 export function resumePlan(missionState) {
   if (!missionState || typeof missionState !== "object")
@@ -39,8 +39,8 @@ export function resumePlan(missionState) {
   let degraded = false
   const normalized = milestones.map((m, index) => {
     if (!m || typeof m.id !== "string") throw new TypeError("each milestone needs a string id")
-    const order = typeof m.order === "number" ? m.order : ((degraded = true), index)
-    const status = typeof m.status === "string" ? m.status : ((degraded = true), "pending")
+    const order = typeof m.order === "number" ? m.order : (degraded = true, index)
+    const status = typeof m.status === "string" ? m.status : (degraded = true, "pending")
     return { ...m, order, status, _index: index }
   })
 

@@ -1,17 +1,19 @@
 {
-  "name": "contractor-harness",
-  "version": "0.1.0",
+  "name": "mission-harness",
+  "version": "0.2.0",
   "description": "Contract-first multi-agent build harness. Define \"done\" as a machine-checkable contract before any code, fan the work out to path-scoped worker seats, and have a fresh adversarial seat adjudicate every claim.",
   "type": "module",
   "license": "MIT",
   "bin": {
-    "contractor": "./src/cli.mjs"
+    "mission": "./src/cli.mjs"
   },
   "exports": {
     ".": "./src/index.mjs",
     "./rules/*": "./src/rules/*.mjs"
   },
   "files": [
+    "CHANGELOG.md",
+    "MIGRATING.md",
     "src",
     "prompts",
     "adapters",
@@ -24,7 +26,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "node --test src/rules/*.test.mjs src/io/*.test.mjs",
+    "test": "node --test src/*.test.mjs src/rules/*.test.mjs src/io/*.test.mjs src/state/*.test.mjs",
     "doctor": "node ./src/cli.mjs doctor"
   },
   "keywords": [
@@ -40,10 +42,10 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/FelipeCostaBR/contractor.git"
+    "url": "git+https://github.com/FelipeCostaBR/mission-harness.git"
   },
-  "homepage": "https://github.com/FelipeCostaBR/contractor#readme",
+  "homepage": "https://github.com/FelipeCostaBR/mission-harness#readme",
   "bugs": {
-    "url": "https://github.com/FelipeCostaBR/contractor/issues"
+    "url": "https://github.com/FelipeCostaBR/mission-harness/issues"
   }
 }

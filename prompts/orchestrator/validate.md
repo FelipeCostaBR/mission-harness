@@ -22,14 +22,14 @@ In this order:
 2. **Else read `queueSubstrate.status`.** If `unavailable-worktree`, the queue is
    dead by construction. Derive the touched-area set from the handoffs (each names
    its feature → area) ∪ the areas owning the milestone's committed paths
-   (`git show --name-only`, routed through `contractor own`). **Do not read the
+   (`git show --name-only`, routed through `mission own`). **Do not read the
    queue, and do not treat its emptiness as a finding** — its deadness was
    recorded at arm time, not discovered now.
 
-3. **Else drain it:** `contractor status` shows the queued areas; the drain drops
+3. **Else drain it:** `mission status` shows the queued areas; the drain drops
    entries stamped with another mission mechanically. If the queue is empty but
    the milestone had features **and** the substrate was `live`, do not silently
-   fall back: re-probe with `contractor route --resolve <a changed path>` first.
+   fall back: re-probe with `mission route --resolve <a changed path>` first.
    If the flag resolves from the root but the queue was empty during the run, the
    cause is a working-directory drift inside the run. Record it in
    `boundaryNotes` so a retro can count it, and proceed on handoff ∪ commit scope.
@@ -39,7 +39,7 @@ In this order:
 
 ## 2. Spawn one validator per touched area
 
-Read-only, fresh context, in parallel. Use `contractor prompt seats/validator`
+Read-only, fresh context, in parallel. Use `mission prompt seats/validator`
 (or `seats/ui-validator` for a surface that renders an interface — pass it the
 milestone's design spec).
 
@@ -115,6 +115,12 @@ from the touched-area set:
   generated types disagree with the schema.
 - **Every escalation's `verifiedBy` commands**, re-run. An escalation with no
   `verifiedBy` evidence FAILS the gate.
+- **The commit boundary**, over the milestone's commits:
+  `mission commits <missionDir> <base>..HEAD`. Every touched path must sit
+  inside a grant of the feature or escalation that claims the commit; a
+  protected path is a violation whatever the grant.
+
+Record the result with `mission state <missionDir> set-gate integration '<json>'`.
 
 **Run quiet.** Redirect each command's output to a log and ingest only the exit
 code: `<cmd> > /tmp/gate-N.log 2>&1; echo "exit=$?"`. On a RED command do not
@@ -169,9 +175,17 @@ If a validator did not return, its verdict file is absent → that area is
 **failing by default**, never assumed-pass.
 
 **b. Mechanical derivation.** Compute `assertionStatus` STRICTLY from the
-persisted files. An assertion is `passing` only if its verdict literally says so.
-You may not write `assertionStatus` from expectation, and may not write it before
-every validator's file exists.
+persisted files, with the CLI doing the derivation:
+
+```
+mission state <missionDir> record-verdict <milestone> verdicts/<name>.json
+```
+
+It reads the raw file, re-derives every assertion id it touches by the same
+rule `set-assertion` enforces (the newest verdicts must unanimously pass), and
+writes the evidence before the derived state. You may not write
+`assertionStatus` from expectation, and may not write it before every
+validator's file exists.
 
 Any `"verdict": "fail"`, **any** `boundaryViolations[]`, or **any**
 `missingDefaults[]` makes the bound assertion `failing`. These are hard blockers,
@@ -189,7 +203,7 @@ failures) and `informational[]` (recorded, never blocking).
 Run the decision:
 
 ```
-contractor advance <missionDir> <milestoneId>
+mission advance <missionDir> <milestoneId>
 ```
 
 It reads the persisted verdicts, the gate result and the round counter, and
@@ -207,23 +221,36 @@ milestone done.
 
 For a real failure:
 
-- **Increment `correctiveRounds[milestone]` AND append to `roundLog[]`** with
-  `{ milestone, round, type: "corrective", trigger: [...], at: <ISO-8601>, seat }`.
+- **Open the round with one command**, which increments
+  `correctiveRounds[milestone]` AND appends the stamped `roundLog[]` entry in a
+  single atomic write:
+
+  ```
+  mission state <missionDir> bump-round <milestone> --type corrective \
+    --trigger '<failed ids>' --seat <model/effort> --note "<one line>"
+  ```
 
   ⚠️ **The increment is not bookkeeping, it is the safety mechanism.** Two rules
   read that counter and nothing else: the circuit breaker, and the worker-seat
   escalation. A round that is logged but not counted disarms **both**, silently.
-  `contractor check` treats a counter behind its log as an error for exactly this
+  `mission check` treats a counter behind its log as an error for exactly this
   reason.
 
 - **Always stamp `at`.** Without it a retro can count rounds but never measure
   them, and "this mission took three days" cannot be attributed to any stage.
 
-- **Pick the worker seat for the round** from `contractor advance`'s output. It
-  keeps the cheap seat for the first attempt and escalates to the frontier tier
-  for the FINAL round before the breaker would hand off to a human — spending the
-  expensive seat only where the cheap one is visibly struggling. Record the seat
-  in the round log so a retro can tell whether it helped.
+- **Pick the worker seat for the round** from the seat ladder, BEFORE you bump:
+
+  ```
+  mission seat corrective <missionDir> <milestone> --cause <assertion|gate|spec> --triggers '<failed ids>'
+  ```
+
+  The worker climbs one rung per failure, two when the same check failed in the
+  previous round, and never above its ceiling. A `spec` cause never climbs —
+  the contract is wrong, so fix the contract, not the seat. Pass the returned
+  `<model>/<effort>` as `--seat` so a retro can tell whether the climb helped.
+  A red **gate** with a clear cause in one area goes to the fixer seat
+  (`mission prompt seats/fixer`) rather than a fresh worker.
 
 - **Under the cap:** scope follow-up feature(s) targeting exactly the failing
   assertions, with procedures sharpened by the validator's notes. Hand back to
@@ -268,9 +295,9 @@ reach mission close still open.
 
 A milestone may advance ONLY when all of: every bound assertion resolved, zero
 boundary violations, zero missing defaults, AND the integration gate green.
-`contractor advance` computes this.
+`mission advance` computes this.
 
-Then run `contractor check <missionDir>` and fix any **error** finding before
+Then run `mission check <missionDir>` and fix any **error** finding before
 advancing. Emit **warn** findings into `boundaryNotes` so they stay visible to a
 retro.
 
@@ -283,7 +310,8 @@ The milestone boundary is the only point where mission state is provably
 consistent — verdicts persisted, gate green, commits made, no worker in flight —
 so it is the only safe place to reset your window.
 
-**Record the knowledge half** in `mission-state.json`:
+**Record the knowledge half** with `mission state add-decision` and
+`mission state add-constraint`:
 
 - **`decisions[]`** — `{ milestone, decision, why }` for each choice a later
   window would otherwise relitigate. Include the approach **rejected** and why;
@@ -312,13 +340,13 @@ ramp toll and a cold prompt cache for nothing.
 
 If any assertion is in an unverifiable state — the device was not attached, the
 staging environment was down, the runner was not configured —
-`contractor advance` reports the milestone **gated**.
+`mission advance` reports the milestone **gated**.
 
 A gated milestone or mission **MUST NOT be recorded `done`.**
 
 ```
-contractor disarm gated <missionDir>
-contractor status                     # confirm INERT
+mission disarm gated <missionDir>
+mission status                     # confirm INERT
 ```
 
 List the required verification as a REQUIRED follow-up with its exact commands,
@@ -359,8 +387,8 @@ finish summary.
 ## 6. Finish
 
 ```
-contractor disarm done <missionDir>
-contractor status                     # must print INERT
+mission disarm done <missionDir>
+mission status                     # must print INERT
 ```
 
 The hook also self-defends: it no-ops whenever `missionStatus` is not `active`,

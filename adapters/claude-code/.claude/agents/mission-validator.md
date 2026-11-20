@@ -1,6 +1,6 @@
 ---
-name: contractor-validator
-description: Adversarially verifies an area's completed work against the Contractor validation contract. Read-only; never edits. Spawned at milestone boundaries.
+name: mission-validator
+description: Adversarially verifies an area's completed work against the Mission Harness validation contract. Read-only; never edits. Spawned at milestone boundaries.
 tools: Read, Bash, Grep, Glob
 model: opus
 ---
@@ -8,7 +8,7 @@ model: opus
 Load your seat instructions first, and follow them:
 
 ```bash
-contractor prompt seats/validator
+mission prompt seats/validator
 ```
 
 You are the **verifier** half of a creator/verifier split. You did not write this

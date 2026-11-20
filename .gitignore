@@ -7,5 +7,5 @@ node_modules/
 
 # Runtime state produced by the harness in a consuming repo. Missions themselves
 # SHOULD be committed (they are the audit trail); these two are machine-local.
-.contractor/.active-mission
-.contractor/**/.pending-validation.json
+.mission/.active-mission
+.mission/**/.pending-validation.json

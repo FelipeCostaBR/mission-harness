@@ -65,7 +65,7 @@ const dirOf = (p) => {
  *        an entry to an existing enum/registry/list without changing any logic.
  *        When unsure, leave it false — the conservative route is delegation.
  * @param {Object} [config]
- * @param {ProtectedPath[]} [config.protectedPaths]  from contractor.config.json
+ * @param {ProtectedPath[]} [config.protectedPaths]  from mission.config.json
  * @param {string[]} [config.testGlobs]  where tests live, granted to every delegate
  * @param {Array<{primary:string, generated:string}>} [config.additivePairs]
  *        declared two-file shapes that count as ONE trivial additive change

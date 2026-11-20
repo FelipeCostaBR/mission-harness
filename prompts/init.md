@@ -1,7 +1,7 @@
-# Adapt Contractor to this codebase
+# Adapt Mission Harness to this codebase
 
-You are setting up the Contractor harness for a repository you have not seen
-before. Your output is a filled-in `contractor.config.json` that `contractor
+You are setting up the Mission Harness harness for a repository you have not seen
+before. Your output is a filled-in `mission.config.json` that `mission
 doctor` reports zero errors on, plus a short written handover explaining the
 judgement calls you made.
 
@@ -62,7 +62,7 @@ preference:
   ```
   Paths that co-change constantly are one area, whatever the folder tree says.
 
-**Hard requirements**, all checked by `contractor doctor`:
+**Hard requirements**, all checked by `mission doctor`:
 
 - **Areas must be DISJOINT.** No file may be claimed by two areas. The
   parallelism rule assumes disjointness to prove two workers can run
@@ -91,8 +91,8 @@ Do not invent a partition the code does not have.
 Now list the paths that fall outside every area. Run:
 
 ```
-contractor doctor        # reports the count and the top directories
-contractor own <path>…   # checks specific paths
+mission doctor        # reports the count and the top directories
+mission own <path>…   # checks specific paths
 ```
 
 **Unowned paths are the point, not a gap to close.** These are the
@@ -237,13 +237,13 @@ expensive to fix after the fact.
 
 ## Write the config, then prove it
 
-1. Write `contractor.config.json`.
-2. Run `contractor doctor`. **Iterate until it reports zero errors.** Warnings
+1. Write `mission.config.json`.
+2. Run `mission doctor`. **Iterate until it reports zero errors.** Warnings
    are judgement calls you may keep — explain each one you keep.
 3. Run every `gates.integration` command and record its exit code.
 4. Spot-check the routing on real paths:
    ```
-   contractor own $(git ls-files | shuf -n 15)
+   mission own $(git ls-files | shuf -n 15)
    ```
    Every path should land in the area you would have guessed, or be deliberately
    unowned. If any surprises you, the globs are wrong — fix them now, because

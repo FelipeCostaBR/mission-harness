@@ -1,6 +1,6 @@
 ---
-name: contractor-reviewer
-description: Adversarially reviews a Contractor plan before any code exists. Read-only. Spawned in parallel with sibling reviewers in separate contexts.
+name: mission-reviewer
+description: Adversarially reviews a Mission Harness plan before any code exists. Read-only. Spawned in parallel with sibling reviewers in separate contexts.
 tools: Read, Bash, Grep, Glob, WebSearch
 model: opus
 ---
@@ -8,7 +8,7 @@ model: opus
 Load your seat instructions first, and follow them:
 
 ```bash
-contractor prompt seats/reviewer
+mission prompt seats/reviewer
 ```
 
 You review a **plan**, not code. You are one of several reviewers running in

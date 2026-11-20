@@ -1,26 +1,33 @@
 /**
- * handoff-digest.mjs — the terse-worker-return rule.
+ * handoff-digest.mjs — the missions-harness terse-worker-return rule.
  *
- * A worker's full handoff is a big object: everything it built, every command it
- * ran, every issue it found. If that object is the worker's RETURN value, it
- * re-enters the orchestrator's context whole — and then a second time as the
- * write that persists it. On real runs, worker returns accounted for a large
- * share of a worker-heavy orchestrator session.
+ * Worker/validator returns re-enter the orchestrator as `<task-notification>`
+ * payloads; a full handoff object (17–23KB) used to pass through the
+ * orchestrator TWICE — once in the notification, once as the Write that
+ * persisted it. The fix inverts persistence: the WORKER writes its own full
+ * handoff to `<prdFolder>/handoffs/<feature-id>.json` as its last action (an
+ * escalation-worker writes `handoffs/ESC-<id>.json`), and its RETURN value is
+ * only this DIGEST (schema-forced via HANDOFF_DIGEST_SCHEMA). The orchestrator
+ * ingests ~1KB per worker; validators and bookkeeping read the full file from
+ * disk, where it always lived.
  *
- * So persistence is inverted. The WORKER writes its own full handoff to
- * `handoffs/<feature-id>.json` as its last action, and its RETURN is only this
- * DIGEST (~1KB, schema-forced). The orchestrator ingests the digest; validators
- * and bookkeeping read the full object from disk, where it always lived.
- *
- * The digest deliberately keeps EVERYTHING the orchestrator's spawn loop acts on:
- *   - escalations WITH their full file lists (escalation-route consumes them directly),
- *   - incomplete reasons + self-flagged issues (clipped — full text is on disk),
+ * `digestFromHandoff()` is the single definition of the full→digest mapping —
+ * used by tests and by any retrofit over old missions. The digest keeps
+ * EVERYTHING the orchestrator's spawn loop actually acts on:
+ *   - escalations with their file lists CLIPPED at MAX.escalationFiles (12;
+ *     the overflow is named in the reason as "[+N more files]") and EMPTY for
+ *     a prose escalation (a bare string, or an `escalation:`-prefixed
+ *     incomplete[] line), plus `escalationsCount`, so an escalation past the
+ *     cap of 6 is never dropped silently. mission-run step 3 (MR-3.0) feeds
+ *     `routeEscalation` from the digest only when `files` is non-empty and
+ *     unclipped; otherwise it reads the full list from the handoff file
+ *     (`routeEscalation` throws on an empty `files`),
+ *   - incomplete reasons + self-flagged issues (clipped — the validator reads
+ *     the full text from disk; the orchestrator only needs awareness),
  *   - failed commands (green commands are just a count),
  *   - assertionsCovered, proceduresFollowed, and the handoff path.
  *
- * `digestFromHandoff()` is the single definition of the full→digest mapping.
- *
- * Pure: no I/O.
+ * Pure: no I/O. `node --test`-guarded by `handoff-digest.test.mjs`.
  */
 
 const CLIP = { reason: 200, incomplete: 160, issue: 120, cmd: 80 }
@@ -32,9 +39,19 @@ const clip = (s, n) => {
 }
 
 /**
- * JSON Schema to force on the worker's RETURN value, in runtimes that support
- * structured output. In runtimes that do not, paste it into the worker prompt as
- * the required response shape — the fields are the contract either way.
+ * An absent list field reads as empty; a present non-array one throws, so a
+ * malformed handoff (say `incomplete: "x"`) can never digest to "complete".
+ */
+function listOf(handoff, key) {
+  const value = handoff[key]
+  if (value === undefined || value === null) return []
+  if (!Array.isArray(value)) throw new TypeError(`handoff.${key} must be an array when present`)
+  return value
+}
+
+/**
+ * JSON Schema forced on the worker's RETURN (replaces the full handoff schema
+ * at the Workflow `agent()` call — the full object goes to disk instead).
  */
 export const HANDOFF_DIGEST_SCHEMA = {
   type: "object",
@@ -42,8 +59,8 @@ export const HANDOFF_DIGEST_SCHEMA = {
   required: ["feature", "handoffPath", "handoffWritten", "status", "assertionsCovered"],
   properties: {
     feature: { type: "string" },
-    handoffPath: { type: "string" }, // <mission>/handoffs/<feature-id>.json
-    handoffWritten: { type: "boolean" }, // the worker's CLAIM; the orchestrator's _meta merge is the proof
+    handoffPath: { type: "string" }, // <prdFolder>/handoffs/<feature-id>.json (ESC-<id>.json for an escalation-worker)
+    handoffWritten: { type: "boolean" }, // worker's claim; the orchestrator's _meta merge is the deterministic proof
     status: { enum: ["complete", "incomplete", "escalated"] },
     assertionsCovered: { type: "array", items: { type: "string" } },
     escalations: {
@@ -59,6 +76,7 @@ export const HANDOFF_DIGEST_SCHEMA = {
         },
       },
     },
+    escalationsCount: { type: "number" },
     incomplete: { type: "array", items: { type: "string" } },
     incompleteCount: { type: "number" },
     issues: { type: "array", items: { type: "string" } },
@@ -81,7 +99,7 @@ export const HANDOFF_DIGEST_SCHEMA = {
  * Derive the digest from a FULL handoff object (the canonical mapping).
  * Escalations are accepted from either shape real handoffs use: a structured
  * `escalations[]` field, and/or `incomplete[]` strings prefixed "escalation:".
- * @param {Object} handoff  full worker handoff (see docs/schemas.md)
+ * @param {Object} handoff  full worker handoff (references/architecture.md schema)
  * @param {{handoffPath: string}} opts
  */
 export function digestFromHandoff(handoff, opts = {}) {
@@ -92,47 +110,48 @@ export function digestFromHandoff(handoff, opts = {}) {
   if (typeof handoffPath !== "string" || !handoffPath)
     throw new TypeError("opts.handoffPath is required (where the full handoff lives)")
 
-  const structured = Array.isArray(handoff.escalations) ? handoff.escalations : []
-  const incompleteAll = (handoff.incomplete ?? []).map(String)
+  const structured = listOf(handoff, "escalations").map((e, i) => {
+    if (typeof e === "string") return { files: [], reason: e }
+    if (!e || typeof e !== "object") throw new TypeError(`handoff.escalations[${i}] must be an object or a string`)
+    return e
+  })
+  const incompleteAll = listOf(handoff, "incomplete").map(String)
   const escFromIncomplete = incompleteAll
     .filter((s) => /^escalation:/i.test(s.trim()))
     .map((s) => ({ files: [], reason: s.trim() }))
-  const escalations = [...structured, ...escFromIncomplete]
-    .slice(0, MAX.escalations)
-    .map((e) => {
-      const files = (Array.isArray(e.files) ? e.files : []).map(String)
-      const overflow =
-        files.length > MAX.escalationFiles
-          ? ` [+${files.length - MAX.escalationFiles} more files]`
-          : ""
-      const out = {
-        files: files.slice(0, MAX.escalationFiles),
-        reason: clip(e.reason ?? e.description ?? "", CLIP.reason - overflow.length) + overflow,
-      }
-      if (typeof e.additiveOnly === "boolean") out.additiveOnly = e.additiveOnly
-      return out
-    })
+  const escalationsAll = [...structured, ...escFromIncomplete]
+  const escalations = escalationsAll.slice(0, MAX.escalations).map((entry) => {
+    const files = (Array.isArray(entry.files) ? entry.files : []).map(String)
+    const overflow = files.length > MAX.escalationFiles ? ` [+${files.length - MAX.escalationFiles} more files]` : ""
+    const out = {
+      files: files.slice(0, MAX.escalationFiles),
+      reason: clip(entry.reason ?? entry.description ?? "", CLIP.reason - overflow.length) + overflow,
+    }
+    if (typeof entry.additiveOnly === "boolean") out.additiveOnly = entry.additiveOnly
+    return out
+  })
 
   const incomplete = incompleteAll
     .filter((s) => !/^escalation:/i.test(s.trim()))
     .slice(0, MAX.incomplete)
     .map((s) => clip(s, CLIP.incomplete))
-  const issuesAll = (handoff.issues ?? []).map(String)
-  const commands = Array.isArray(handoff.commandsRun) ? handoff.commandsRun : []
+  const issuesAll = listOf(handoff, "issues").map(String)
+  const commands = listOf(handoff, "commandsRun")
   const failed = commands
     .filter((c) => c && typeof c.exitCode === "number" && c.exitCode !== 0)
     .slice(0, MAX.failedCommands)
     .map((c) => ({ cmd: clip(c.cmd ?? "", CLIP.cmd), exitCode: c.exitCode }))
 
-  const status = escalations.length ? "escalated" : incompleteAll.length ? "incomplete" : "complete"
+  const status = escalationsAll.length ? "escalated" : incompleteAll.length ? "incomplete" : "complete"
 
   return {
     feature: handoff.feature,
     handoffPath,
     handoffWritten: true,
     status,
-    assertionsCovered: (handoff.assertionsCovered ?? []).map(String),
+    assertionsCovered: listOf(handoff, "assertionsCovered").map(String),
     escalations,
+    escalationsCount: escalationsAll.length,
     incomplete,
     incompleteCount: incompleteAll.length - escFromIncomplete.length,
     issues: issuesAll.slice(0, MAX.issues).map((s) => clip(s, CLIP.issue)),

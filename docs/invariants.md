@@ -41,7 +41,7 @@ disarms both, silently.**
 
 Observed: a round log holding a dozen corrective entries across five milestones
 while the counter recorded one milestone at 2 — and another milestone ran five
-uncapped rounds with no breaker. `contractor check` treats a counter behind its
+uncapped rounds with no breaker. `mission check` treats a counter behind its
 log as an **error** for exactly this reason.
 
 ### 5. Verdicts are persisted raw, then derived — never paraphrased
@@ -93,7 +93,7 @@ Inline escalation work collapses the creator/verifier split on precisely the
 highest-blast-radius files in the repository, and it was the orchestrator's
 largest reducible context sink on long sessions.
 
-`contractor escalate` size-gates it. `additiveOnly` defaults to false because
+`mission escalate` size-gates it. `additiveOnly` defaults to false because
 wrongly-inline (creator/verifier collapse on real logic) is far worse than
 wrongly-delegated (a slightly over-provisioned worker).
 
@@ -118,7 +118,7 @@ A shell's working directory persists across calls, so one `cd` inside a compound
 command silently changes it for every later step. Relative bookkeeping paths then
 resolve somewhere else entirely and **exit 0**.
 
-Use the `contractor` CLI for flag operations, `git -C <root>` for commits, and
+Use the `mission` CLI for flag operations, `git -C <root>` for commits, and
 absolute paths for file operations. This is the documented root cause of a "hook
 left armed" incident, and it recurred later as an edit queue that silently stopped
 recording mid-run.
@@ -171,7 +171,7 @@ spends goes on re-orientation** — re-reading source to rediscover what the
 previous one knew. The window ceiling was never the failure; the toll at each
 window change was.
 
-Therefore: the artifacts are the only memory; `contractor brief` replaces
+Therefore: the artifacts are the only memory; `mission brief` replaces
 re-reading; `decisions[]` and `constraints[]` are written at every boundary; and
 the reset fires **at a milestone boundary, never at a token threshold** — a
 threshold can land mid-worker and checkpoint a torn state.
@@ -202,7 +202,7 @@ no debug branch, no round burned, and the milestone not marked done.
 
 ### 17. The hook is inert outside a mission
 
-`contractor disarm` removes the flag and records an honest status, then verifies
+`mission disarm` removes the flag and records an honest status, then verifies
 its own post-condition and exits non-zero if the flag survived. The hook also
 requires **both** signals — flag present AND `missionStatus === "active"` — so a
 leftover flag from a failed disarm is harmless once the milestone is recorded.
