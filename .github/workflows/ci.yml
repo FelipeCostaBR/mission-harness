@@ -18,8 +18,8 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
 
-      - name: Rule engine tests
-        run: node --test src/rules/*.test.mjs
+      - name: Rule, state and I/O tests
+        run: npm test
 
       # The CLI is the deterministic half of the harness. If it cannot scaffold,
       # validate and reason about a mission end-to-end, nothing downstream is

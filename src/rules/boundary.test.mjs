@@ -147,7 +147,7 @@ test("a ./-prefixed changed path is normalised, never a false violation", () => 
 
 test("an absolute lane path is normalised against the given root; one under another root stays a violation", () => {
   const globs = ["packages/api/src/auth/**"]
-  const lane = "/Users/x/app/.claude/worktrees/lane-1"
+  const lane = "/srv/app/.claude/worktrees/lane-1"
   assert.deepEqual(boundaryViolations([`${lane}/packages/api/src/auth/a.ts`], globs, { root: lane }), [])
   assert.deepEqual(boundaryViolations([`${lane}/packages/api/src/auth/a.ts`], globs, { root: `${lane}/` }), [])
   assert.deepEqual(
