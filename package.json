@@ -42,10 +42,10 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/FelipeCostaBR/contractor.git"
+    "url": "git+https://github.com/FelipeCostaBR/mission-harness.git"
   },
-  "homepage": "https://github.com/FelipeCostaBR/contractor#readme",
+  "homepage": "https://github.com/FelipeCostaBR/mission-harness#readme",
   "bugs": {
-    "url": "https://github.com/FelipeCostaBR/contractor/issues"
+    "url": "https://github.com/FelipeCostaBR/mission-harness/issues"
   }
 }

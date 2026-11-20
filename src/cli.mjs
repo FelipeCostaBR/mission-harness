@@ -882,7 +882,7 @@ ${bold("Hook")}
   route --resolve             probe whether the flag resolves from here
   compact                     PreCompact entry: stamps a compactions[] breadcrumb
 
-Docs: https://github.com/FelipeCostaBR/contractor
+Docs: https://github.com/FelipeCostaBR/mission-harness
 `
 
 /**
