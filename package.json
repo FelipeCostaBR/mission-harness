@@ -1,6 +1,6 @@
 {
   "name": "mission-harness",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Contract-first multi-agent build harness. Define \"done\" as a machine-checkable contract before any code, fan the work out to path-scoped worker seats, and have a fresh adversarial seat adjudicate every claim.",
   "type": "module",
   "license": "MIT",
@@ -12,6 +12,8 @@
     "./rules/*": "./src/rules/*.mjs"
   },
   "files": [
+    "CHANGELOG.md",
+    "MIGRATING.md",
     "src",
     "prompts",
     "adapters",

@@ -143,15 +143,18 @@ The deterministic half. It never calls a model.
 Setup
   init                        scaffold mission.config.json
   doctor                      validate the config against this repository
+  migrate <agent-routing.json> draft the config from an older harness's registry
   install [adapter]           wire the prompts into an agent runtime
   prompt [name]               print a seat prompt (works with ANY model)
 
 Missions
-  mission new <id>            scaffold a mission folder
+  new <id>                    scaffold a mission folder (docs/prd/<id>/)
   arm <missionDir>            arm edit-routing for a mission
   disarm [status] [dir]       halted | gated | done
   status                      armed state + milestone position
   brief                       the rehydration digest for a fresh context
+  state [dir] <cmd> …         the ONLY way to change mission-state.json after
+                              approval: locked, atomic, bookkeeping-checked
 
 Decisions  (pure rules, evaluated against the mission's artifacts)
   check                       bookkeeping invariants
@@ -159,7 +162,23 @@ Decisions  (pure rules, evaluated against the mission's artifacts)
   partition <milestone>       which features may run in parallel
   escalate <files…>           inline or delegate, and the worker's path grant
   own <paths…>                which area owns a path
+  seat resolve '<json>'       the model + effort a role's next spawn runs on
+  seat corrective <ms> …      the worker seat for the next corrective round
+  size <milestone>            small | normal | large (the worker's start rung)
+  commits <rev-range>         every commit stays inside the grant that claims it
+
+Hooks
+  route                       PostToolUse: queue an edit for its area
+  brief --only-active         SessionStart: inject the brief when a mission is live
+  compact                     PreCompact: stamp a breadcrumb before a lossy summary
 ```
+
+### Writing the PRD
+
+`mission prompt write-a-prd` (the `write-a-prd` skill in Claude Code) interviews
+you, explores the repository in the config's vocabulary, and writes
+`docs/prd/<id>/spec.md` with the four sections the planner depends on:
+Surfaces & Areas, Acceptance Criteria, Escalations and Milestones.
 
 ## The seats
 
@@ -180,6 +199,14 @@ boundary.*
 | **reviewer** | fresh, parallel siblings | **no** | Attacks the plan before code exists |
 | **escalation worker** | fresh | a tight per-escalation grant | Changes protected surfaces |
 | **simplifier** | fresh, no contract | one area's globs | Reuse, dedup, altitude |
+| **scout** | fresh, one question | **no** | Answers a code question with cited lines, so the orchestrator never reads source |
+| **fixer** | fresh, one red gate | a grant that excludes the failing test | Makes a gate pass without touching the test that caught it |
+
+Every seat is spawned at the model and effort the **seat ladder** returns
+(`mission seat resolve`). A role starts at its rung, climbs only on a failure its
+entry lists, never past its ceiling, and never on a spec failure. The default
+ladder runs Haiku to Opus at low to max effort; a project replaces it with
+`seatLadder` in its config.
 
 Note the bottom lane. The advance / corrective / stop decision is not made by any
 of the agents — it is a pure function with a test suite. A model under context

@@ -100,16 +100,16 @@
   ],
 
   "seats": {
-    "orchestrator": { "tier": "frontier", "runtime": "session" },
-    "worker": { "tier": "standard", "runtime": "subagent" },
-    "validator": { "tier": "frontier", "runtime": "subagent", "readOnly": true },
-    "reviewer": { "tier": "frontier", "runtime": "subagent", "readOnly": true }
+    "orchestrator": { "runtime": "session" },
+    "worker": { "runtime": "subagent" },
+    "validator": { "runtime": "subagent", "readOnly": true },
+    "reviewer": { "runtime": "subagent", "readOnly": true }
   },
 
   "models": {
-    "frontier": { "claude-code": "opus", "default": "claude-opus-5" },
-    "standard": { "claude-code": "sonnet", "default": "claude-sonnet-5" },
-    "economy": { "claude-code": "haiku", "default": "claude-haiku-4-5-20251001" }
+    "opus": { "claude-code": "opus", "default": "claude-opus-5-5" },
+    "sonnet": { "claude-code": "sonnet", "default": "claude-sonnet-5-5" },
+    "haiku": { "claude-code": "haiku", "default": "claude-haiku-5-5" }
   },
 
   "policy": {

@@ -45,8 +45,9 @@ A thin wrapper keeps the spawns consistent:
 # mission-seat <seat> <payload-file>
 set -euo pipefail
 seat="$1"; payload="$2"
-tier=$(jq -r ".seats.\"${seat##*/}\".tier // \"standard\"" mission.config.json)
-model=$(jq -r ".models.\"$tier\".default // \"$tier\"" mission.config.json)
+role="${seat##*/}"; [ "$role" = "ui-validator" ] && role=screenshot-validator
+alias=$(mission seat resolve "{\"role\":\"$role\"}" | jq -r .model)
+model=$(jq -r ".models.\"$alias\".default // \"$alias\"" mission.config.json)
 codex exec --model "$model" "$(mission prompt "$seat")
 
 $(cat "$payload")"

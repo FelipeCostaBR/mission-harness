@@ -163,23 +163,54 @@ here the ones that matter.
 
 ---
 
-## `seats` and `models`
+## `seats`, `seatLadder` and `models`
+
+`seats` says how each seat runs: `runtime` (`session` or `subagent`) and
+`readOnly`. `doctor` **errors** if `validator.readOnly` is not `true`.
+
+Which model and effort a spawn runs on comes from the **seat ladder**, not from
+`seats`. The built-in table (`src/rules/seat-ladder.default.json`) has seven
+rungs, Haiku/low to Opus/max, and per role a `start` rung, a `ceiling`, and the
+failure triggers it climbs on (`climbOn`). The worker's start depends on the
+milestone's size tier (`mission size`). A `cheap` profile lowers the starts; a
+mission opts in with a top-level `seatProfile: "cheap"` in its state.
+
+```bash
+mission seat resolve '{"role":"validator"}'
+# {"model":"opus","effort":"xhigh","rung":"L5","climbed":false,...}
+```
+
+Set `seatLadder` to a full replacement table (same shape as the default) to
+change it; `doctor` checks every role's start and ceiling are real rungs.
+
+The ladder's `model` values are Claude Code's tier aliases (`haiku`, `sonnet`,
+`opus`). `models{}` maps each to a concrete id per runtime, for runtimes without
+those aliases:
 
 ```jsonc
-"seats": {
-  "orchestrator": { "tier": "frontier", "runtime": "session" },
-  "worker":       { "tier": "standard", "runtime": "subagent" },
-  "validator":    { "tier": "frontier", "runtime": "subagent", "readOnly": true },
-  "reviewer":     { "tier": "frontier", "runtime": "subagent", "readOnly": true }
-},
 "models": {
-  "frontier": { "claude-code": "opus",   "default": "claude-opus-5" },
-  "standard": { "claude-code": "sonnet", "default": "claude-sonnet-5" }
+  "opus":   { "claude-code": "opus",   "default": "claude-opus-5-5" },
+  "sonnet": { "claude-code": "sonnet", "default": "claude-sonnet-5-5" },
+  "haiku":  { "claude-code": "haiku",  "default": "claude-haiku-5-5" }
 }
 ```
 
-`doctor` **errors** if `validator.readOnly` is not `true`, and warns if the
-orchestrator or validator is not on the frontier tier. See `docs/models.md`.
+See `docs/models.md` for why the orchestrator and validator are the seats worth
+paying for.
+
+---
+
+## `commitBoundary`
+
+Optional settings for `mission commits <range>`, the per-commit boundary check.
+Protected paths are always forbidden and the mission folder is always exempt.
+
+| Field | Meaning |
+| --- | --- |
+| `archTestGlobs` | Existing architecture tests. A commit that edits one must have it NAMED (not globbed) in a claiming grant. |
+| `forbiddenExceptions` | Paths under a protected glob that a grant may still touch. |
+| `ownerAcceptedPrefixes` | Commit subjects the owner accepted outside any grant (a rebase reconciliation). |
+| `acknowledged` | Retroactive grants the owner has acknowledged. |
 
 ---
 
@@ -188,7 +219,6 @@ orchestrator or validator is not on the frontier tier. See `docs/models.md`.
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `maxCorrectiveRounds` | `2` | The circuit breaker. Two failed rounds means stuck, not unlucky. |
-| `escalateSeatAfterRounds` | `1` | Spend the frontier tier on the LAST attempt before the breaker trips, not the first. |
 | `parallelWorkers` | `true` | Allow provably-disjoint features to run concurrently. |
 | `simplifyPass` | `true` | Run a simplify worker per touched area before validation. |
 | `commitPerFeature` | `true` | Commit after each clean handoff, so the next worker inherits a clean tree. |

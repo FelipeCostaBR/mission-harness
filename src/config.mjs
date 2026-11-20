@@ -60,10 +60,10 @@ export const DEFAULT_CONFIG = {
   testGlobs: [],
   additivePairs: [],
   seats: {
-    orchestrator: { tier: "frontier", runtime: "session" },
-    worker: { tier: "standard", runtime: "subagent" },
-    validator: { tier: "frontier", runtime: "subagent", readOnly: true },
-    reviewer: { tier: "frontier", runtime: "subagent", readOnly: true },
+    orchestrator: { runtime: "session" },
+    worker: { runtime: "subagent" },
+    validator: { runtime: "subagent", readOnly: true },
+    reviewer: { runtime: "subagent", readOnly: true },
   },
   models: {},
   // null = the built-in ladder (src/rules/seat-ladder.default.json).
@@ -73,7 +73,6 @@ export const DEFAULT_CONFIG = {
   commitBoundary: {},
   policy: {
     maxCorrectiveRounds: 2,
-    escalateSeatAfterRounds: 1,
     parallelWorkers: true,
     simplifyPass: true,
     commitPerFeature: true,

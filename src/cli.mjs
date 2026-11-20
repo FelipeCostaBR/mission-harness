@@ -45,7 +45,7 @@ import { partitionDisjoint } from "./rules/partition.mjs"
 import { decideSelfHeal } from "./rules/self-heal.mjs"
 import { resumePlan } from "./rules/resume.mjs"
 import { routeEscalation } from "./rules/escalation-route.mjs"
-import { correctiveSeatFromState, runCLI as runSeatCLI } from "./rules/seat-ladder.mjs"
+import { correctiveSeatFromState, resolveSeat, runCLI as runSeatCLI } from "./rules/seat-ladder.mjs"
 import { runCLI as runPlanSizeCLI } from "./rules/plan-size.mjs"
 import { collectCommits, commitBoundaryReport } from "./rules/commit-boundary.mjs"
 import {
@@ -266,13 +266,11 @@ function cmdDoctor() {
       "seats.validator.readOnly is not true. A validator that can edit is not a verifier — it will fix what it was asked to judge.",
     )
   }
-  const orchTier = config.seats?.orchestrator?.tier
-  const valTier = config.seats?.validator?.tier
-  if (orchTier && orchTier !== "frontier") {
-    add("warn", "orchestrator-not-frontier", `The orchestrator seat is "${orchTier}". Planning and adjudication are where model strength pays most; see docs/models.md.`)
-  }
-  if (valTier && valTier !== "frontier") {
-    add("warn", "validator-not-frontier", `The validator seat is "${valTier}". A weak verifier rubber-stamps.`)
+  const valStart = table.roles?.validator?.start
+  const valRung = (table.ladder ?? []).findIndex((r) => r.id === valStart)
+  const workerRung = (table.ladder ?? []).findIndex((r) => r.id === table.roles?.worker?.start)
+  if (valRung >= 0 && workerRung >= 0 && valRung < workerRung) {
+    add("warn", "validator-below-worker", `The validator starts below the worker on the seat ladder. A weaker verifier rubber-stamps; see docs/models.md.`)
   }
 
   // --- protected paths
@@ -327,7 +325,10 @@ function cmdMissionNew(args) {
   const p = ensureMissionDirs(root, missionDir)
   if (!existsSync(p.state)) {
     const seats = Object.fromEntries(
-      Object.entries(config.seats ?? {}).map(([k, v]) => [k, v.tier]),
+      ["orchestrator", "worker", "validator"].map((role) => {
+        const r = role === "orchestrator" ? seatTable(config).sessionSeats?.orchestrator : resolveSeatSafe(config, role)
+        return [role, r?.model ?? null]
+      }),
     )
     writeJson(p.state, newMissionState(missionDir, { name: id, seats }))
   }
@@ -755,6 +756,14 @@ function collectPrompts(dir, prefix = "") {
     }
   }
   return acc
+}
+
+function resolveSeatSafe(config, role) {
+  try {
+    return resolveSeat({ role }, seatTable(config))
+  } catch {
+    return null
+  }
 }
 
 /**

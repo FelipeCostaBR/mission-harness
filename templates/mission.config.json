@@ -68,18 +68,18 @@
   "additivePairs": [],
 
   "//seats": [
-    "Who does what. `tier` is abstract (economy | standard | frontier) and resolves",
-    "through models{} below, so the same config runs on any provider.",
+    "How each seat runs. The model and effort a spawn uses come from the seat",
+    "ladder (`mission seat resolve`); set `seatLadder` to replace the default table.",
     "The validator MUST be readOnly. A validator that can edit is not a verifier:",
     "it will quietly fix what it was asked to judge, and the verdict becomes",
     "worthless. See docs/models.md for why the orchestrator and validator are the",
     "two seats worth paying for."
   ],
   "seats": {
-    "orchestrator": { "tier": "frontier", "runtime": "session" },
-    "worker": { "tier": "standard", "runtime": "subagent" },
-    "validator": { "tier": "frontier", "runtime": "subagent", "readOnly": true },
-    "reviewer": { "tier": "frontier", "runtime": "subagent", "readOnly": true }
+    "orchestrator": { "runtime": "session" },
+    "worker": { "runtime": "subagent" },
+    "validator": { "runtime": "subagent", "readOnly": true },
+    "reviewer": { "runtime": "subagent", "readOnly": true }
   },
 
   "//models": [
@@ -89,16 +89,14 @@
     "one-line change."
   ],
   "models": {
-    "frontier": { "claude-code": "opus", "default": "claude-opus-5" },
-    "standard": { "claude-code": "sonnet", "default": "claude-sonnet-5" },
-    "economy": { "claude-code": "haiku", "default": "claude-haiku-4-5-20251001" }
+    "opus": { "claude-code": "opus", "default": "claude-opus-5-5" },
+    "sonnet": { "claude-code": "sonnet", "default": "claude-sonnet-5-5" },
+    "haiku": { "claude-code": "haiku", "default": "claude-haiku-5-5" }
   },
 
   "policy": {
     "//maxCorrectiveRounds": "Two failed rounds means stuck, not unlucky. A third round reliably just burns tokens.",
     "maxCorrectiveRounds": 2,
-    "//escalateSeatAfterRounds": "Spend the frontier tier on the LAST attempt before the breaker trips, not the first.",
-    "escalateSeatAfterRounds": 1,
     "parallelWorkers": true,
     "simplifyPass": true,
     "commitPerFeature": true,
