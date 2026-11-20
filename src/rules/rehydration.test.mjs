@@ -165,7 +165,7 @@ test("REH-8 all-done mission renders the finish path, and render stays compact",
   const brief = renderRehydrationBrief(plan)
   assert.ok(brief.includes("finish bookkeeping"))
   assert.ok(brief.includes("set-status done"))
-  // Etros keeps a finished mission's state in place: no archive, no missions index.
+  // A project may keep a finished mission's state in place: no archive, no missions index.
   assert.equal(/archive|index/i.test(brief), false)
 })
 

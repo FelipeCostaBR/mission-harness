@@ -51,6 +51,7 @@ import {
   computeAdvanceReadiness,
 } from "./rules/bookkeeping.mjs"
 import { pathWithinGlobs } from "./rules/boundary.mjs"
+import { runCLI as runStateCLI, COMMAND_NAMES as STATE_COMMANDS } from "./state/mission-state.mjs"
 
 const PKG_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..")
 
@@ -805,6 +806,9 @@ ${bold("Missions")}
   disarm [status] [dir]       halted (default) | gated | done
   status [missionDir]         armed state + milestone position
   brief [missionDir] [--json] the rehydration digest for a fresh context
+  state [missionDir] <cmd>    the ONLY way to change mission-state.json after
+                              approval (locked, atomic, bookkeeping-checked);
+                              run \`contractor state help\` for its commands
 
 ${bold("Decisions")} ${dim("(pure rules, evaluated against the mission's artifacts)")}
   check [missionDir]          bookkeeping invariants
@@ -820,6 +824,24 @@ ${bold("Hook")}
 Docs: https://github.com/FelipeCostaBR/contractor
 `
 
+/**
+ * `contractor state [missionDir] <command> [args]` — the ONLY sanctioned route
+ * for a mission-state.json write once the plan is approved. Locked, atomic,
+ * and refused when it would add a bookkeeping error. With no missionDir it
+ * acts on the armed mission.
+ */
+function cmdState(args) {
+  const { root, config } = loadConfig()
+  const explicit = args[0] && !STATE_COMMANDS.includes(args[0]) ? args[0] : null
+  const rest = explicit ? args.slice(1) : args
+  const missionDir = resolveMission(root, explicit)
+  const abs = isAbsolute(missionDir) ? missionDir : join(root, missionDir)
+  const r = runStateCLI([abs, ...rest], { surfaces: Object.keys(config.surfaces ?? {}) })
+  if (r.stdout) process.stdout.write(r.stdout)
+  if (r.stderr) process.stderr.write(r.stderr)
+  process.exitCode = r.exitCode
+}
+
 async function main() {
   const [, , cmd, ...args] = process.argv
   switch (cmd) {
@@ -832,6 +854,8 @@ async function main() {
       throw new UserError("usage: contractor mission new <id>")
     case "arm":
       return cmdArm(args)
+    case "state":
+      return cmdState(args)
     case "disarm":
       return cmdDisarm(args)
     case "status":

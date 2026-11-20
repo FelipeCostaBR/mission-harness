@@ -111,7 +111,7 @@ test("trailing ** still grants the directory itself (unchanged behaviour)", () =
 })
 
 test("literal parens in a path are matched, not treated as regex", () => {
-  // Real Etros paths carry (site)/(authed)-style route groups; a naive regex
+  // Real Next.js paths carry (site)/(authed)-style route groups; a naive regex
   // translation breaks here.
   const globs = ["apps/web/app/(site)/**/__tests__/**", "apps/web/app/(site)/legal/privacy/page.tsx"]
   assert.equal(pathWithinGlobs("apps/web/app/(site)/components/__tests__/fleet.test.tsx", globs), true)
@@ -147,7 +147,7 @@ test("a ./-prefixed changed path is normalised, never a false violation", () => 
 
 test("an absolute lane path is normalised against the given root; one under another root stays a violation", () => {
   const globs = ["packages/api/src/auth/**"]
-  const lane = "/Users/x/Etros/.claude/worktrees/lane-1"
+  const lane = "/Users/x/app/.claude/worktrees/lane-1"
   assert.deepEqual(boundaryViolations([`${lane}/packages/api/src/auth/a.ts`], globs, { root: lane }), [])
   assert.deepEqual(boundaryViolations([`${lane}/packages/api/src/auth/a.ts`], globs, { root: `${lane}/` }), [])
   assert.deepEqual(

@@ -22,10 +22,11 @@
  *                      counter only — this module never gates the breaker).
  */
 
-/** Every missionStatus the harness recognizes. Must match mission-flag.mjs's
- *  disarm allowlist (minus "active", which only `arm` sets). Drift between the
- *  two is itself a bug — keep them in sync. */
-export const MISSION_STATUSES = ["active", "halted", "done", "behaviorally-gated"]
+/** Every missionStatus the harness recognizes. `gated` = paused on an
+ *  out-of-harness live gate (never reported as done); `behaviorally-gated` is
+ *  its pre-package spelling, kept so older mission-states still validate.
+ *  `contractor disarm` accepts every value but "active", which only `arm` sets. */
+export const MISSION_STATUSES = ["active", "halted", "done", "gated", "behaviorally-gated"]
 
 /** Non-active statuses (the hook is inert for all of these). */
 export const NON_ACTIVE_STATUSES = MISSION_STATUSES.filter((s) => s !== "active")

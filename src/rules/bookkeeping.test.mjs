@@ -31,9 +31,9 @@ test("clean mission-state yields no findings", () => {
   assert.equal(isBookkeepingClean(checkBookkeeping(state)), true)
 })
 
-test("MISSION_STATUSES is pinned (mission-flag.mjs's disarm allowlist is the same set minus active)", () => {
-  assert.deepEqual(MISSION_STATUSES, ["active", "halted", "done", "behaviorally-gated"])
-  assert.deepEqual(NON_ACTIVE_STATUSES, ["halted", "done", "behaviorally-gated"])
+test("MISSION_STATUSES is pinned (contractor disarm accepts is the same set minus active)", () => {
+  assert.deepEqual(MISSION_STATUSES, ["active", "halted", "done", "gated", "behaviorally-gated"])
+  assert.deepEqual(NON_ACTIVE_STATUSES, ["halted", "done", "gated", "behaviorally-gated"])
 })
 
 test("behaviorally-gated is a recognized status (the new value)", () => {
