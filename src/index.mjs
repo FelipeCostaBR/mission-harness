@@ -21,6 +21,8 @@ export {
   CORRECTIVE_CAUSES,
 } from "./rules/seat-ladder.mjs"
 export { planSize, planSizeTier, SMALL_BELOW, LARGE_FROM } from "./rules/plan-size.mjs"
+export { commitBoundaryReport, collectCommits } from "./rules/commit-boundary.mjs"
+export { verifiedByRecordProblem, verifiedByProblems } from "./rules/verified-by.mjs"
 export { validateScoutReply, SCOUT_REPLY_SCHEMA } from "./rules/scout-schema.mjs"
 export { runCLI as runStateCommand, COMMAND_NAMES as STATE_COMMANDS } from "./state/mission-state.mjs"
 export { digestFromHandoff, HANDOFF_DIGEST_SCHEMA } from "./rules/handoff-digest.mjs"

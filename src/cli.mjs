@@ -46,6 +46,7 @@ import { resumePlan } from "./rules/resume.mjs"
 import { routeEscalation } from "./rules/escalation-route.mjs"
 import { correctiveSeatFromState, runCLI as runSeatCLI } from "./rules/seat-ladder.mjs"
 import { runCLI as runPlanSizeCLI } from "./rules/plan-size.mjs"
+import { collectCommits, commitBoundaryReport } from "./rules/commit-boundary.mjs"
 import {
   checkBookkeeping,
   checkHandoffMeta,
@@ -817,6 +818,7 @@ ${bold("Decisions")} ${dim("(pure rules, evaluated against the mission's artifac
   seat resolve '<json>'       the model + effort a role's next spawn runs on
   seat corrective [dir] <ms> --cause <assertion|gate|spec> --triggers '<ids>'
   size [dir] <milestone>      small | normal | large (picks the worker's start rung)
+  commits [dir] <rev-range>   every commit stays inside the grant that claims it
   check [missionDir]          bookkeeping invariants
   advance [missionDir] [ms]   advance / corrective / circuit-break
   partition [milestone] [dir] which features may run in parallel
@@ -877,6 +879,35 @@ function cmdSize(args) {
   return emit(runPlanSizeCLI([abs, args[args.length - 1]]))
 }
 
+/**
+ * `contractor commits [missionDir] <rev-range>`: the per-commit boundary rule.
+ * Every path a commit touches must sit inside a grant of the feature or
+ * escalation that claims the commit; protected paths are violations whatever
+ * the grant; the mission's own artifacts are exempt.
+ */
+function cmdCommits(args) {
+  const { root, config } = loadConfig()
+  const missionDir = resolveMission(root, args.length >= 2 ? args[0] : null)
+  const range = args[args.length - 1]
+  if (!range) throw new UserError("usage: contractor commits [missionDir] <rev-range>")
+  const abs = isAbsolute(missionDir) ? missionDir : join(root, missionDir)
+  const rel = relative(root, abs).split("\\").join("/")
+  const cb = config.commitBoundary ?? {}
+  const rules = {
+    exempt: [`${rel}/mission-state.json`, `${rel}/validation-contract.json`, `${rel}/handoffs/**`, `${rel}/verdicts/**`, `${rel}/spec.md`],
+    forbidden: (config.protectedPaths ?? []).map((p) => p.glob).filter(Boolean),
+    forbiddenExceptions: cb.forbiddenExceptions ?? [],
+    archTestGlobs: cb.archTestGlobs ?? [],
+    prdPath: `${rel}/spec.md`,
+    ownerAcceptedPrefixes: cb.ownerAcceptedPrefixes ?? [],
+    acknowledged: cb.acknowledged ?? [],
+  }
+  const state = requireState(root, missionDir)
+  const report = commitBoundaryReport(collectCommits(range, { prdDir: abs, prdPath: rules.prdPath }), state, rules)
+  out(JSON.stringify(report, null, 2))
+  if (!report.ok) process.exitCode = 1
+}
+
 function emit(r) {
   if (r.stdout) process.stdout.write(r.stdout)
   if (r.stderr) process.stderr.write(r.stderr)
@@ -901,6 +932,8 @@ async function main() {
       return cmdSeat(args)
     case "size":
       return cmdSize(args)
+    case "commits":
+      return cmdCommits(args)
     case "disarm":
       return cmdDisarm(args)
     case "status":

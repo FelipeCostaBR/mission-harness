@@ -64,6 +64,9 @@ export const DEFAULT_CONFIG = {
   models: {},
   // null = the built-in ladder (src/rules/seat-ladder.default.json).
   seatLadder: null,
+  // Optional: archTestGlobs (existing architecture tests a grant must NAME,
+  // not glob), forbiddenExceptions, ownerAcceptedPrefixes, acknowledged.
+  commitBoundary: {},
   policy: {
     maxCorrectiveRounds: 2,
     escalateSeatAfterRounds: 1,
