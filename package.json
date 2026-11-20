@@ -24,7 +24,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "node --test src/rules/*.test.mjs src/io/*.test.mjs src/state/*.test.mjs",
+    "test": "node --test src/*.test.mjs src/rules/*.test.mjs src/io/*.test.mjs src/state/*.test.mjs",
     "doctor": "node ./src/cli.mjs doctor"
   },
   "keywords": [
