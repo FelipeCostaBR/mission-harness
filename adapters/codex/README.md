@@ -12,8 +12,10 @@ mission init
 mission install codex
 ```
 
-That writes `AGENTS.md` at your project root. If you already have one, the
-install will not overwrite it — merge the Mission Harness section in by hand.
+That installs the Codex runtime marker and `AGENTS.md` at your project root.
+If your project already has `AGENTS.md`, merge the Mission Harness section into
+it. To enable model routing on an existing project, rerun
+`mission install codex` with the updated harness.
 
 ## Adapt
 
@@ -38,20 +40,29 @@ state lives entirely in the mission folder.
 
 ## Automating the seats
 
-A thin wrapper keeps the spawns consistent:
+Use `mission seat session planner` or `mission seat session orchestrator`
+before opening a fresh session. Both resolve to GPT-6.2 Sol by default.
+Workers and scouts resolve to GPT-6.1 Terra. Other seats resolve to GPT-6.2
+Sol. The resolved effort and correction rules still come from the project's
+seat ladder. Keep each family current by setting `models.sol.codex` or
+`models.terra.codex` in `mission.config.json` when adopting a newer model.
+
+Use the role and prompt that match the work. For example:
 
 ```bash
-#!/usr/bin/env bash
-# mission-seat <seat> <payload-file>
-set -euo pipefail
-seat="$1"; payload="$2"
-role="${seat##*/}"; [ "$role" = "ui-validator" ] && role=screenshot-validator
-alias=$(mission seat resolve "{\"role\":\"$role\"}" | jq -r .model)
-model=$(jq -r ".models.\"$alias\".default // \"$alias\"" mission.config.json)
-codex exec --model "$model" "$(mission prompt "$seat")
+seat=$(mission seat resolve '{"role":"worker","sizeTier":"normal"}')
+model=$(jq -r .model <<< "$seat")
+effort=$(jq -r .effort <<< "$seat")
+codex exec --model "$model" -c "model_reasoning_effort=\"$effort\"" "$(mission prompt seats/worker)
 
-$(cat "$payload")"
+$(cat worker-payload.md)"
 ```
+
+For code and file research, resolve `scout` and use `mission prompt seats/scout`.
+For browser research, resolve `browser-scout` and use
+`mission prompt seats/browser-scout`. Run it in a fresh Codex session with
+browser tools and access to the authorized sources. The browser scout returns
+page URLs and what it observed. The file scout returns file and line references.
 
 Keep the prompt **prefix** byte-stable across spawns and vary only the payload —
 stable prefixes hit the prompt cache, and a reshuffled prompt does not.

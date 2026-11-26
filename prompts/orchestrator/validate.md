@@ -248,7 +248,8 @@ For a real failure:
   The worker climbs one rung per failure, two when the same check failed in the
   previous round, and never above its ceiling. A `spec` cause never climbs —
   the contract is wrong, so fix the contract, not the seat. Pass the returned
-  `<model>/<effort>` as `--seat` so a retro can tell whether the climb helped.
+  `<model>/<effort>` as `--seat` and `rung` as `--rung`. The rung lets
+  the next round resume correctly when two rungs use the same model and effort.
   A red **gate** with a clear cause in one area goes to the fixer seat
   (`mission prompt seats/fixer`) rather than a fresh worker.
 

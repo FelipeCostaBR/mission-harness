@@ -22,6 +22,8 @@ mission prompt run         # phase 2 — build
 mission prompt validate    # phase 3 — adjudicate
 
 mission prompt seats/worker
+mission prompt seats/scout
+mission prompt seats/browser-scout
 mission prompt seats/validator
 mission prompt seats/escalation-worker
 mission prompt seats/reviewer
@@ -43,8 +45,16 @@ against a config with errors — every gate would pass vacuously.
 Each seat needs its **own fresh context**. That is the mechanism, not a detail:
 a validator that shares the implementer's context is not a verifier.
 
+Resolve the session model with `mission seat session orchestrator` before
+starting the coordinator. For each fresh seat, use the concrete model and
+effort from `mission seat resolve`. The Codex adapter uses GPT-6.1 Terra
+for workers and scouts, and GPT-6.2 Sol for planning, coordination, review,
+validation, and other default seats. Check the currently supported Sol and
+Terra versions at mission start and update the project model aliases if needed.
+
 ```bash
-codex exec --model <tier-model> "$(mission prompt seats/worker)
+mission seat resolve '{"role":"worker","sizeTier":"normal"}'
+codex exec --model <resolved-model> -c 'model_reasoning_effort="<resolved-effort>"' "$(mission prompt seats/worker)
 
 ## Payload
 area: billing
@@ -55,7 +65,10 @@ missionDir: docs/prd/csv-export
 "
 ```
 
-Resolve `<tier-model>` from `seats` and `models` in `mission.config.json`.
+Delegate file searches to the read-only `scout`. For browser research, use
+`browser-scout` and a fresh seat that can access the authorized browser
+surface. Pass one question and the allowed sources. If the seat lacks browser
+tools, record the evidence it could not verify.
 
 **The validator must be read-only.** If your invocation cannot revoke write
 access, state the constraint at the top of its prompt and check its handoff for

@@ -165,5 +165,39 @@ echo '{"tool_name":"Edit","tool_input":{"file_path":"src/auth/session.ts"}}' | $
 grep -q 'session.ts' "$M/.pending-validation.json" && fail "the hook must be inert once disarmed"
 ok "disarmed, hook inert"
 
+echo "== Codex adapter model routing =="
+seat_model() { node -pe 'JSON.parse(require("fs").readFileSync(0, "utf8")).model'; }
+[ "$($CLI seat resolve '{"role":"worker"}' | seat_model)" = sonnet ] || fail "generic worker tier changed"
+cp mission.config.json expected-config.json
+printf '%s\n' '# Existing project instructions' > AGENTS.md
+$CLI install codex > /dev/null
+cmp -s mission.config.json expected-config.json || fail "adapter overwrote the project config"
+[ "$(cat AGENTS.md)" = '# Existing project instructions' ] || fail "adapter overwrote project instructions"
+for role in worker scout browser-scout; do
+  [ "$($CLI seat resolve "{\"role\":\"$role\"}" | seat_model)" = gpt-6.1-terra ] || fail "$role should use Terra"
+done
+[ "$($CLI seat resolve '{"role":"validator"}' | seat_model)" = gpt-6.2-sol ] || fail "validator should use Sol"
+[ "$($CLI seat session orchestrator | seat_model)" = gpt-6.2-sol ] || fail "orchestrator should use Sol"
+$CLI prompt seats/browser-scout | grep -q '"observation"' || fail "browser scout prompt is missing URL evidence"
+
+first=$($CLI seat corrective "$M" M1 --cause assertion --triggers '["A-1"]')
+node -e 'const s = JSON.parse(process.argv[1]); if (s.model !== "gpt-6.1-terra" || s.rung !== "L4") process.exit(1)' "$first" \
+  || fail "first correction should climb one rung on Terra"
+$CLI state "$M" bump-round M1 --type corrective --trigger A-1 --seat gpt-6.1-terra/high --rung L4 > /dev/null
+second=$($CLI seat corrective "$M" M1 --cause assertion --triggers '["A-2"]')
+node -e 'const s = JSON.parse(process.argv[1]); if (s.model !== "gpt-6.1-terra" || s.rung !== "L5") process.exit(1)' "$second" \
+  || fail "next correction should resume from the recorded L4 rung"
+
+node -e '
+const fs = require("fs");
+const cfg = JSON.parse(fs.readFileSync("mission.config.json", "utf8"));
+cfg.models.terra = { codex: "terra-new-release" };
+cfg.models.sol = { codex: "sol-new-release" };
+fs.writeFileSync("mission.config.json", JSON.stringify(cfg));
+'
+[ "$($CLI seat resolve '{"role":"browser-scout"}' | seat_model)" = terra-new-release ] || fail "Terra override was ignored"
+[ "$($CLI seat session planner | seat_model)" = sol-new-release ] || fail "Sol override was ignored"
+ok "Codex defaults, corrective rungs and model upgrades resolve"
+
 echo
 echo "PASS — CLI smoke test"

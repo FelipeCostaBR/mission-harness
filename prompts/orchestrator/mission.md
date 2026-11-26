@@ -101,12 +101,13 @@ mission seat corrective <missionDir> <milestone> --cause <assertion|gate|spec> -
 ```
 
 It returns `{model, effort, rung, reason}`. Spawn with exactly that model and
-effort, and record the seat (`<model>/<effort>`) on the round. A role climbs a
+effort. On a corrective round, record the model and effort with `--seat` and
+the returned rung with `--rung`. A role climbs a
 rung only on a failure its ladder entry lists; a `spec` failure never climbs —
 the contract is wrong, not the seat. `mission size <milestone>` gives the
 milestone's size tier, which picks the worker's start rung.
 
-## Ask the scout instead of reading source
+## Delegate file and browser research to the scout
 
 When you need to know how the code works, spawn a **scout**
 (`mission prompt seats/scout`) with one question. Its reply is schema-forced:
@@ -114,6 +115,13 @@ an answer of at most 600 characters, `file:line` citations quoted from lines it
 read this turn, and a confidence. Trust a `high`/`medium` reply without
 re-opening its sources. Every file you read yourself is context you cannot spend
 on adjudication.
+
+For a question that needs browser evidence, resolve the seat with
+`mission seat resolve '{"role":"browser-scout"}'` and pass
+`mission prompt seats/browser-scout`, one question and the authorized sources
+to a fresh read-only seat with browser tools. Use its URL-and-observation
+handoff. The code scout's validator expects file and line citations. If the
+browser tools or sources are unavailable, record what remains unverified.
 
 A red gate or a single-area corrective goes to the **fixer**
 (`mission prompt seats/fixer`): it gets the gate, the log path and a grant

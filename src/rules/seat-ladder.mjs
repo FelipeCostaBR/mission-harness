@@ -133,7 +133,8 @@ export function resolveSeat(input, table = TABLE) {
   if (Object.hasOwn(input, "seatProfile")) {
     throw new TypeError("seatProfile belongs inside flags, as {\"flags\":{\"seatProfile\":...}}, not at the top level")
   }
-  const { role, previousRung, trigger, sameCheckFailedBefore: repeated, sizeTier, flags } = input
+  const { previousRung, trigger, sameCheckFailedBefore: repeated, sizeTier, flags } = input
+  const role = input.role === "browser-scout" ? "scout" : input.role
   const seat = roleSeat(table, role)
   const override = profileOverride(table, role, flags)
   // A string "true" from a hand-written CLI argument would otherwise climb one rung where two were meant.
@@ -267,7 +268,9 @@ export function correctiveSeatFromState(state, milestone, { cause, triggerIds = 
   if (!CORRECTIVE_CAUSES.includes(cause)) throw new TypeError(`cause must be one of ${CORRECTIVE_CAUSES.join(", ")}`)
   const flags = state?.seatProfile == null ? undefined : { seatProfile: state.seatProfile }
   const start = resolveSeat({ role: "worker", previousRung: null, sizeTier, flags }, table).rung
-  const previousRung = rungOfSeat(newestCorrective(state?.roundLog, milestone)?.seat, table) ?? start
+  const last = newestCorrective(state?.roundLog, milestone)
+  const recordedRung = table.ladder.some((rung) => rung.id === last?.rung) ? last.rung : null
+  const previousRung = recordedRung ?? rungOfSeat(last?.seat, table) ?? start
   return resolveSeat({
     role: "worker",
     previousRung,
@@ -308,22 +311,26 @@ function correctiveSeat(args, table) {
 
 /**
  * Runs the CLI and returns `{exitCode, stdout, stderr}`; it never exits the
- * process. `table` stands in for seat-ladder.json so a test can give the worker
- * a different start per size tier; the CLI entry point never passes one.
+ * process. `table` supplies the project's ladder. `mapSeat` can resolve the
+ * selected model for a runtime after the ladder has selected its rung.
  */
-export function runCLI(argv, table = TABLE) {
+export function runCLI(argv, table = TABLE, mapSeat = (_role, seat) => seat) {
   const [command, ...args] = argv
   try {
     let result
+    let role
     if (command === "resolve") {
       if (args.length !== 1) throw new UsageError("resolve takes exactly one JSON argument")
-      result = resolveSeat(parseJson(args[0], "the argument"), table)
+      const input = parseJson(args[0], "the argument")
+      result = resolveSeat(input, table)
+      role = input.role
     } else if (command === "corrective-seat") {
       result = correctiveSeat(args, table)
+      role = "worker"
     } else {
       throw new UsageError(`unknown command ${JSON.stringify(command)}`)
     }
-    return { exitCode: 0, stdout: `${JSON.stringify(result)}\n`, stderr: "" }
+    return { exitCode: 0, stdout: `${JSON.stringify(mapSeat(role, result))}\n`, stderr: "" }
   } catch (error) {
     if (!(error instanceof UsageError) && !(error instanceof TypeError)) throw error
     const usage = error instanceof UsageError ? USAGE : ""

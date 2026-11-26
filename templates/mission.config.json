@@ -78,6 +78,7 @@
   "seats": {
     "orchestrator": { "runtime": "session" },
     "worker": { "runtime": "subagent" },
+    "scout": { "runtime": "subagent", "readOnly": true },
     "validator": { "runtime": "subagent", "readOnly": true },
     "reviewer": { "runtime": "subagent", "readOnly": true }
   },
