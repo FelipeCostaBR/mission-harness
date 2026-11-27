@@ -17,6 +17,12 @@ from a one-liner. Every documented plan-phase failure traces back to a premise
 nobody wrote down, and a one-liner is nothing but unwritten premises. Point them
 at `templates/spec-template.md`.
 
+For a Codex run, register the coordinator with `mission usage start` before
+planning. Track each seat attempt before launch, close it with `mission usage
+finish`, and link replacements with `retryOf`. Register a new coordinator
+attempt when resuming in a fresh session. See the
+[Codex telemetry workflow](../../adapters/codex/README.md#context-and-usage-reports).
+
 ## The loop
 
 Run these phases in order, staying in the loop between them. Each is a separate
@@ -52,8 +58,11 @@ previous window already knew.
 So:
 
 - **The artifacts are the only memory.** `mission-state.json`, `handoffs/`,
-  `verdicts/`. Never keep a mission fact solely in conversation. If it matters
-  after this turn, it goes in a file.
+  `reviews/`, and `verdicts/`. Write any fact needed after this turn to disk.
+- **Start in a fresh mission context.** Carry the task, contract, and artifact
+  paths into the coordinator rather than importing an unrelated thread.
+  Use scoped scouts and keep gate output on disk. Feed the coordinator only
+  the exit status and the relevant failure, if any.
 - **Never re-read raw artifacts to reorient.** Run `mission brief`. It prints
   a ≤6KB digest: position, per-assertion states, burned rounds, open escalations,
   last gate, plus the decisions and constraints previous windows recorded and a
@@ -62,10 +71,11 @@ So:
   `constraints[]` are what make a context reset cheap. A brief carrying status
   alone did *not* reduce the re-orientation cost in practice, because the session
   learned where it was and then re-derived what it knew anyway.
-- **Reset at a milestone boundary, never at a token threshold.** A boundary is
-  the only point where the mission's state is provably consistent — verdicts
-  persisted, gate green, commits made, no worker in flight. A percentage-triggered
-  reset can land mid-worker and checkpoint a torn state.
+- **Reset at a safe checkpoint.** Start fresh after the approved plan or at a
+  milestone boundary once state and artifacts are saved and no worker is in
+  flight. A context warning calls for smaller payloads and a checkpoint at
+  the next safe boundary. At budget review, defer optional work and leave any
+  unverified required gate pending.
 
 ## Every state write goes through `mission state`
 
@@ -81,7 +91,7 @@ an error, and writes atomically. The ones you use most:
 
 | When | Command |
 | --- | --- |
-| a verdict file lands | `record-verdict <milestone> <verdicts/file.json>` (derives assertion states from it) |
+| a verdict file lands | `record-verdict <milestone> verdicts/incoming/<name>.json` (derives assertion states from it) |
 | the integration gate ran | `set-gate integration '<json>'` |
 | a corrective round opens | `bump-round <milestone> --type corrective --trigger <ids> --seat <model/effort>` |
 | an escalation is routed or proven | `upsert-escalation <id> '<json>'` (a `verifiedBy` record must be re-runnable: command, exit 0, evidence, readOnly) |

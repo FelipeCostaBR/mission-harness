@@ -6,6 +6,7 @@ node_modules/
 !.env.example
 
 # Runtime state produced by the harness in a consuming repo. Missions themselves
-# SHOULD be committed (they are the audit trail); these two are machine-local.
+# SHOULD be committed (they are the audit trail). These files are machine-local.
 .mission/.active-mission
 .mission/**/.pending-validation.json
+**/.usage/

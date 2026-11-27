@@ -126,18 +126,40 @@ node -e '
 const fs = require("fs");
 const p = "docs/prd/demo/mission-state.json";
 const s = JSON.parse(fs.readFileSync(p, "utf8"));
-s.assertionStatus = { "A-1": "passing" };
 s.correctiveRounds = { M1: 0 };
 s.integrationGate.passed = true;
 fs.writeFileSync(p, JSON.stringify(s, null, 2));
-fs.writeFileSync("docs/prd/demo/verdicts/M1-billing.json", JSON.stringify({
+fs.writeFileSync("docs/prd/demo/verdicts/incoming/M1-billing-r1.json", JSON.stringify({
   area: "billing",
   verdicts: [{ id: "A-1", verdict: "pass", evidence: "npm test exit 0" }],
   boundaryViolations: [], missingDefaults: [], testGaps: []
 }, null, 2));
 '
+RAW=verdicts/incoming/M1-billing-r1.json
+$CLI digest "$M" "$RAW" | grep -q '"passing":1' || fail "raw verdict digest did not report a pass"
+adv | grep -q CORRECTIVE || fail "unrecorded verdict must not drive an advance"
+if $CLI state "$M" set-assertion A-1 passing > /dev/null 2>&1; then
+  fail "unrecorded verdict supplied evidence for a passing assertion"
+fi
+$CLI state "$M" record-verdict M1 "$RAW" > /dev/null
+cmp -s "$M/$RAW" "$M/verdicts/M1-billing-r1.json" || fail "record-verdict did not retain the raw bytes"
 adv | grep -q ADVANCE || fail "a clean milestone should yield ADVANCE"
 ok "advance decisions correct"
+
+echo "== attempt usage =="
+$CLI usage start "$M" '{"id":"first","role":"validator","phase":"validate","model":"gpt-6.2-sol"}' > /dev/null
+$CLI usage finish "$M" first interrupted > /dev/null
+$CLI usage start "$M" '{"id":"second","role":"validator","phase":"validate","model":"gpt-6.2-sol","retryOf":"first"}' > /dev/null
+printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":1000,"cached_input_tokens":950,"output_tokens":25}}' > usage.jsonl
+SOURCE="$(node -pe 'JSON.stringify({format:"codex-exec",path:require("node:path").resolve("usage.jsonl")})')"
+$CLI usage finish "$M" second completed "$SOURCE" > /dev/null
+$CLI usage report "$M" --json | node -e '
+const r = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
+if (r.attempts !== 2 || r.retries !== 1 || r.interrupted !== 1 || r.missingUsage !== 1 ||
+    r.totals.input !== 1000 || r.totals.standardApiUsdBeforeCacheWrites !== null) process.exit(1);
+' || fail "usage report did not account for both attempts"
+adv | grep -q ADVANCE || fail "usage report changed the advance decision"
+ok "usage includes retries and leaves validation intact"
 
 echo "== gated is not done =="
 node -e '

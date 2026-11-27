@@ -22,6 +22,10 @@ and GPT-6.2 Sol. Set `models.terra.codex` and `models.sol.codex` to adopt newer
 supported models without adjusting the seat ladder. For other runtimes, the
 ladder continues to return its model tiers.
 
+`usage.contextWarningTokens` and `usage.advisoryCodexCredits` tune the
+advisories in `mission usage report`. See the
+[Codex telemetry workflow](../adapters/codex/README.md#context-and-usage-reports).
+
 ---
 
 ## `areas`

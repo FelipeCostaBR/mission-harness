@@ -51,9 +51,10 @@ re-scope. Otherwise record `milestoneReviews[<id>] = { required: false }`.
 Spawn the reviewers as read-only agents in FRESH contexts, in parallel — never
 role-play them yourself. Scope every reviewer to THIS milestone. Brief them to
 read each assertion's note first, and to report what they killed as well as what
-survived.
+survived. Assign each reviewer a separate file under `reviews/`. Use
+`mission digest` for its compact result and read findings as needed.
 
-**Pass them the plan review's rejected set.** Without it they re-derive the same
+**Pass them the path to the plan review's rejected set.** Without it they re-derive the same
 candidates that were already killed and you pay twice for the same refutations.
 
 Apply what survives **before spawning a single worker**. A reworded assertion
@@ -163,6 +164,16 @@ parses and rewrites the file — without ingesting its contents. That merge fail
 `handoffWritten: true` claim was false. Treat it exactly like a failed handoff.
 
 ### Token telemetry
+
+With Codex, register the coordinator and each seat attempt with
+`mission usage start` before it runs. Record its terminal outcome and usage
+source with `mission usage finish`, even if an interrupted seat returned no
+usage. Register a replacement under its own ID with `retryOf`. Read the compact
+`mission usage report` at checkpoints. Send full JSON reports to disk if
+needed. The [Codex adapter guide](../../adapters/codex/README.md) shows the
+commands for CLI streams and desktop session logs.
+
+When per-attempt telemetry is unavailable:
 
 Snapshot your budget counter immediately before and after each spawn and attach
 the delta to the persisted handoff as `_meta`. A serial feature gets its exact

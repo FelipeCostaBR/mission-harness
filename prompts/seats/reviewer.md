@@ -59,7 +59,9 @@ contract:
 
 ## Report both halves
 
-Return what **survived** and what you **KILLED**:
+Write what **survived** and what you **KILLED** to the assigned
+`reviews/<name>.json` artifact. This is the only allowed file write. If your
+seat is filesystem read-only, the launcher captures the raw object there.
 
 ```jsonc
 {
@@ -81,6 +83,11 @@ Return what **survived** and what you **KILLED**:
 Recording what you killed is not busywork. It is what stops the next reviewer, and
 the next milestone, from re-deriving the same refutation — and it is the evidence
 that you actually looked, rather than finding nothing.
+
+Return only the artifact path, the finding count, and up to five blocker IDs
+in at most 1 KiB
+when you own the write. When the launcher owns the write, return the raw object
+to that capture.
 
 **Expect most first-pass candidates to die.** The findings that survive are
 usually **cross-assertion contradictions**, which no single-assertion checklist

@@ -29,6 +29,8 @@ import {
   DEFAULT_CONFIG,
 } from "./config.mjs"
 import { arm, disarm, check } from "./io/flag.mjs"
+import { evidenceDigest } from "./io/evidence-digest.mjs"
+import { finishUsage, missionUsage, renderUsage, startUsage } from "./io/usage.mjs"
 import {
   missionPaths,
   ensureMissionDirs,
@@ -863,6 +865,10 @@ ${bold("Missions")}
   disarm [status] [dir]       halted (default) | gated | done
   status [missionDir]         armed state + milestone position
   brief [missionDir] [--json] the rehydration digest for a fresh context
+  digest <dir> <artifact>    summarize a persisted review or verdict
+  usage start <dir> '<json>'  register a seat attempt and optional usage source
+  usage finish <dir> <id> <status> ['<source-json>']
+  usage report <dir> [--json] report usage and cost estimates
   state [missionDir] <cmd>    the ONLY way to change mission-state.json after
                               approval (locked, atomic, bookkeeping-checked);
                               run \`mission state help\` for its commands
@@ -934,6 +940,48 @@ function cmdSeat(args) {
     return emit(runSeatCLI(["corrective-seat", abs, milestone, ...flagArgs], table, mapSeat))
   }
   return emit(runSeatCLI(args, table, mapSeat))
+}
+
+function parseUsageJson(text) {
+  try { return JSON.parse(text) } catch {
+    throw new UserError("Usage metadata must be valid JSON")
+  }
+}
+
+async function cmdUsage([action, missionDir, ...args]) {
+  if (!missionDir) throw new UserError("usage: mission usage <start|finish|report> <missionDir> ...")
+  const { config, root } = loadConfig()
+  requireState(root, missionDir)
+  const missionPath = missionPaths(root, missionDir).dir
+  try {
+    if (action === "start" && args.length === 1) {
+      return out(`Registered usage attempt ${startUsage(missionPath, parseUsageJson(args[0]))}`)
+    }
+    if (action === "finish" && (args.length === 2 || args.length === 3)) {
+      const [id, status, source] = args
+      finishUsage(missionPath, id, status, source == null ? null : parseUsageJson(source))
+      return out(`Recorded usage outcome ${id}: ${status}`)
+    }
+    if (action === "report" && (!args.length || (args.length === 1 && args[0] === "--json"))) {
+      const report = await missionUsage(missionPath, config.usage)
+      return out(args.length ? JSON.stringify(report, null, 2) : renderUsage(report))
+    }
+  } catch (error) {
+    throw new UserError(error.message)
+  }
+  throw new UserError("usage: mission usage start <dir> '<json>' | finish <dir> <id> <status> ['<source-json>'] | report <dir> [--json]")
+}
+
+function cmdDigest([missionDir, artifact, ...rest]) {
+  if (!missionDir || !artifact || rest.length) throw new UserError("usage: mission digest <missionDir> <artifact>")
+  const { root } = loadConfig()
+  requireState(root, missionDir)
+  try {
+    out(JSON.stringify(evidenceDigest(missionPaths(root, missionDir).dir, artifact)))
+  } catch (error) {
+    if (error.code === "ENOENT") throw new UserError("Evidence artifact missing. The required seat result is unverified.")
+    throw new UserError(error.message)
+  }
 }
 
 /** `mission size [missionDir] <milestone>`: small | normal | large. */
@@ -1086,6 +1134,10 @@ async function main() {
       return cmdStatus(args)
     case "brief":
       return cmdBrief(args)
+    case "digest":
+      return cmdDigest(args)
+    case "usage":
+      return cmdUsage(args)
     case "check":
       return cmdCheck(args)
     case "advance":

@@ -420,7 +420,7 @@ export function milestoneVerdictBlockers(prdDir, milestone) {
 /** True when a verdict document carries something `record-verdict` can derive
  *  from or gate on: per-assertion records, or the hard-blocker arrays a 2a
  *  escalation verdict uses (its `verdicts[]` may legitimately be empty). */
-function isRecordableVerdict(doc) {
+export function isRecordableVerdict(doc) {
   if (!doc || typeof doc !== "object" || Array.isArray(doc)) return false
   if (Object.keys(extractPerAssertionRecords(doc)).length > 0) return true
   return Array.isArray(doc.boundaryViolations) || Array.isArray(doc.missingDefaults) || typeof doc.verdict === "string"
