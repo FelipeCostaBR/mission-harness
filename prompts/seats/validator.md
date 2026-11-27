@@ -104,7 +104,10 @@ skepticism.
 
 ## Your verdict
 
-Return ONLY the structured verdict object:
+Write the complete structured verdict to the exact
+`verdicts/incoming/<milestone>-<area>-r<n>.json` path in your payload. This is the
+only allowed file write. If your seat is filesystem read-only, the launcher
+captures this object byte for byte at that path instead.
 
 ```jsonc
 {
@@ -124,4 +127,7 @@ Return ONLY the structured verdict object:
 **No verdict without evidence.** "Looks correct" is not evidence; a command with
 its exit code, or a `file:line`, is.
 
-Your final message IS this object — data for the orchestrator, not prose.
+When you own the artifact write, return only its path, the assertion count,
+and up to five blocker IDs in at most 1 KiB. The artifact holds the full evidence and the
+orchestrator derives state from it. When the launcher owns the write, emit the
+raw object to the launcher's capture and keep it out of the coordinator's chat.

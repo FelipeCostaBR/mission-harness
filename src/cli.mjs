@@ -22,13 +22,15 @@ import {
   findProjectRoot,
   pathGlobsByArea,
   escalationConfig,
-  resolveModel,
+  resolveRuntimeSeat,
   seatTable,
   CONFIG_FILENAME,
   STATE_DIRNAME,
   DEFAULT_CONFIG,
 } from "./config.mjs"
 import { arm, disarm, check } from "./io/flag.mjs"
+import { evidenceDigest } from "./io/evidence-digest.mjs"
+import { finishUsage, missionUsage, renderUsage, startUsage } from "./io/usage.mjs"
 import {
   missionPaths,
   ensureMissionDirs,
@@ -325,9 +327,9 @@ function cmdMissionNew(args) {
   const p = ensureMissionDirs(root, missionDir)
   if (!existsSync(p.state)) {
     const seats = Object.fromEntries(
-      ["orchestrator", "worker", "validator"].map((role) => {
+      ["orchestrator", "worker", "scout", "validator"].map((role) => {
         const r = role === "orchestrator" ? seatTable(config).sessionSeats?.orchestrator : resolveSeatSafe(config, role)
-        return [role, r?.model ?? null]
+        return [role, resolveRuntimeSeat(config, role, r)?.model ?? null]
       }),
     )
     writeJson(p.state, newMissionState(missionDir, { name: id, seats }))
@@ -538,7 +540,8 @@ function cmdAdvance(args) {
     maxRounds,
   })
 
-  const seat = correctiveSeatFromState(state, milestoneId, { cause: gateGreen ? "assertion" : "gate" }, seatTable(config))
+  const corrective = correctiveSeatFromState(state, milestoneId, { cause: gateGreen ? "assertion" : "gate" }, seatTable(config))
+  const seat = resolveRuntimeSeat(config, "worker", corrective)
 
   out(bold(`advance check — ${missionDir} · ${milestoneId}`))
   out("")
@@ -862,12 +865,17 @@ ${bold("Missions")}
   disarm [status] [dir]       halted (default) | gated | done
   status [missionDir]         armed state + milestone position
   brief [missionDir] [--json] the rehydration digest for a fresh context
+  digest <dir> <artifact>    summarize a persisted review or verdict
+  usage start <dir> '<json>'  register a seat attempt and optional usage source
+  usage finish <dir> <id> <status> ['<source-json>']
+  usage report <dir> [--json] report usage and cost estimates
   state [missionDir] <cmd>    the ONLY way to change mission-state.json after
                               approval (locked, atomic, bookkeeping-checked);
                               run \`mission state help\` for its commands
 
 ${bold("Decisions")} ${dim("(pure rules, evaluated against the mission's artifacts)")}
   seat resolve '<json>'       the model + effort a role's next spawn runs on
+  seat session <role>         the model + effort for planner or orchestrator
   seat corrective [dir] <ms> --cause <assertion|gate|spec> --triggers '<ids>'
   size [dir] <milestone>      small | normal | large (picks the worker's start rung)
   commits [dir] <rev-range>   every commit stays inside the grant that claims it
@@ -912,6 +920,16 @@ function cmdState(args) {
 function cmdSeat(args) {
   const { root, config } = loadConfig()
   const table = seatTable(config)
+  const mapSeat = (role, seat) => resolveRuntimeSeat(config, role, seat)
+  if (args[0] === "session") {
+    const role = args[1]
+    if (args.length !== 2 || !["planner", "orchestrator"].includes(role) || !table.sessionSeats?.[role]) {
+      throw new UserError("usage: mission seat session <planner|orchestrator>")
+    }
+    const { model, effort } = mapSeat(role, table.sessionSeats[role])
+    out(JSON.stringify({ model, effort }))
+    return
+  }
   if (args[0] === "corrective") {
     const rest = args.slice(1)
     const positional = rest.filter((a, i) => !a.startsWith("--") && !(i > 0 && rest[i - 1].startsWith("--")))
@@ -919,9 +937,51 @@ function cmdSeat(args) {
     const abs = isAbsolute(missionDir) ? missionDir : join(root, missionDir)
     const flagArgs = rest.slice(rest.findIndex((a) => a.startsWith("--")) >= 0 ? rest.findIndex((a) => a.startsWith("--")) : rest.length)
     const milestone = positional[positional.length - 1]
-    return emit(runSeatCLI(["corrective-seat", abs, milestone, ...flagArgs], table))
+    return emit(runSeatCLI(["corrective-seat", abs, milestone, ...flagArgs], table, mapSeat))
   }
-  return emit(runSeatCLI(args, table))
+  return emit(runSeatCLI(args, table, mapSeat))
+}
+
+function parseUsageJson(text) {
+  try { return JSON.parse(text) } catch {
+    throw new UserError("Usage metadata must be valid JSON")
+  }
+}
+
+async function cmdUsage([action, missionDir, ...args]) {
+  if (!missionDir) throw new UserError("usage: mission usage <start|finish|report> <missionDir> ...")
+  const { config, root } = loadConfig()
+  requireState(root, missionDir)
+  const missionPath = missionPaths(root, missionDir).dir
+  try {
+    if (action === "start" && args.length === 1) {
+      return out(`Registered usage attempt ${startUsage(missionPath, parseUsageJson(args[0]))}`)
+    }
+    if (action === "finish" && (args.length === 2 || args.length === 3)) {
+      const [id, status, source] = args
+      finishUsage(missionPath, id, status, source == null ? null : parseUsageJson(source))
+      return out(`Recorded usage outcome ${id}: ${status}`)
+    }
+    if (action === "report" && (!args.length || (args.length === 1 && args[0] === "--json"))) {
+      const report = await missionUsage(missionPath, config.usage)
+      return out(args.length ? JSON.stringify(report, null, 2) : renderUsage(report))
+    }
+  } catch (error) {
+    throw new UserError(error.message)
+  }
+  throw new UserError("usage: mission usage start <dir> '<json>' | finish <dir> <id> <status> ['<source-json>'] | report <dir> [--json]")
+}
+
+function cmdDigest([missionDir, artifact, ...rest]) {
+  if (!missionDir || !artifact || rest.length) throw new UserError("usage: mission digest <missionDir> <artifact>")
+  const { root } = loadConfig()
+  requireState(root, missionDir)
+  try {
+    out(JSON.stringify(evidenceDigest(missionPaths(root, missionDir).dir, artifact)))
+  } catch (error) {
+    if (error.code === "ENOENT") throw new UserError("Evidence artifact missing. The required seat result is unverified.")
+    throw new UserError(error.message)
+  }
 }
 
 /** `mission size [missionDir] <milestone>`: small | normal | large. */
@@ -1074,6 +1134,10 @@ async function main() {
       return cmdStatus(args)
     case "brief":
       return cmdBrief(args)
+    case "digest":
+      return cmdDigest(args)
+    case "usage":
+      return cmdUsage(args)
     case "check":
       return cmdCheck(args)
     case "advance":

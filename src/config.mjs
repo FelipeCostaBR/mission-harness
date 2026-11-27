@@ -14,6 +14,10 @@ import { DEFAULT_SEAT_TABLE } from "./rules/seat-ladder.mjs"
 
 export const CONFIG_FILENAME = "mission.config.json"
 export const STATE_DIRNAME = ".mission"
+const CODEX_MODELS = {
+  sol: "gpt-6.2-sol",
+  terra: "gpt-6.1-terra",
+}
 /** Read when no mission.config.json exists: the package's name before the rename. */
 export const LEGACY_CONFIG_FILENAMES = ["contractor.config.json"]
 
@@ -62,6 +66,7 @@ export const DEFAULT_CONFIG = {
   seats: {
     orchestrator: { runtime: "session" },
     worker: { runtime: "subagent" },
+    scout: { runtime: "subagent", readOnly: true },
     validator: { runtime: "subagent", readOnly: true },
     reviewer: { runtime: "subagent", readOnly: true },
   },
@@ -114,7 +119,9 @@ export function loadConfig(cwd = process.cwd()) {
   } catch (err) {
     throw new Error(`${configPath} is not valid JSON: ${err.message}`)
   }
-  return { config: withDefaults(raw), root, configPath }
+  const adapterPath = join(root, STATE_DIRNAME, "runtime")
+  const runtime = raw?.runtime ?? (existsSync(adapterPath) ? readFileSync(adapterPath, "utf8").trim() : undefined)
+  return { config: withDefaults({ ...raw, runtime }), root, configPath }
 }
 
 /** area slug -> pathGlobs, the shape `partitionDisjoint` wants. */
@@ -141,6 +148,15 @@ export function resolveModel(config, tier, runtime = "default") {
   if (!entry) return tier
   if (typeof entry === "string") return entry
   return entry[runtime] ?? entry.default ?? tier
+}
+
+/** The Codex adapter selects models by role while keeping the ladder's effort
+ * and escalation rules. Project aliases can override the shipped model IDs. */
+export function resolveRuntimeSeat(config, role, seat) {
+  if (config.runtime !== "codex" || !seat) return seat
+  const tier = ["worker", "scout", "browser-scout"].includes(role) ? "terra" : "sol"
+  const model = resolveModel(config, tier, "codex")
+  return { ...seat, model: model === tier ? CODEX_MODELS[tier] : model }
 }
 
 /**

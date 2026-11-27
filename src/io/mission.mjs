@@ -10,7 +10,9 @@
  *   validation-contract.json   what "done" means, written and approved BEFORE code
  *   mission-state.json         position, knowledge, telemetry, bookkeeping
  *   handoffs/<feature>.json    one per worker, written BY the worker itself
- *   verdicts/<area>.json       one per validator, the RAW returned object
+ *   verdicts/<area>.json       the RAW returned object, accepted by record-verdict
+ *   verdicts/incoming/         unrecorded validator output
+ *   reviews/<name>.json        findings and rejected candidates
  *   .pending-validation.json   the edit-routing queue (machine-local, gitignored)
  */
 
@@ -26,6 +28,7 @@ export function missionPaths(root, missionDir) {
     contract: join(dir, "validation-contract.json"),
     handoffs: join(dir, "handoffs"),
     verdicts: join(dir, "verdicts"),
+    reviews: join(dir, "reviews"),
     queue: join(dir, ".pending-validation.json"),
   }
 }
@@ -33,7 +36,8 @@ export function missionPaths(root, missionDir) {
 export function ensureMissionDirs(root, missionDir) {
   const p = missionPaths(root, missionDir)
   mkdirSync(p.handoffs, { recursive: true })
-  mkdirSync(p.verdicts, { recursive: true })
+  mkdirSync(join(p.verdicts, "incoming"), { recursive: true })
+  mkdirSync(p.reviews, { recursive: true })
   return p
 }
 

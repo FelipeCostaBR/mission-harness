@@ -132,7 +132,7 @@ const COMMAND_SPECS = {
   "record-verdict": { positionals: ["milestone", "path"], flags: { replace: { boolean: true } } },
   "set-gate": { positionals: ["type", "json"], flags: {} },
   "merge-meta": { positionals: ["handoffPath", "json"], flags: {} },
-  "bump-round": { positionals: ["milestone"], flags: { type: { required: true }, trigger: {}, seat: {}, note: {} } },
+  "bump-round": { positionals: ["milestone"], flags: { type: { required: true }, trigger: {}, seat: {}, rung: {}, note: {} } },
   "set-status": { positionals: ["status"], flags: {} },
   "upsert-escalation": { positionals: ["id", "json"], flags: {} },
   "set-milestone-status": { positionals: ["milestone", "status"], flags: {} },
@@ -420,7 +420,7 @@ export function milestoneVerdictBlockers(prdDir, milestone) {
 /** True when a verdict document carries something `record-verdict` can derive
  *  from or gate on: per-assertion records, or the hard-blocker arrays a 2a
  *  escalation verdict uses (its `verdicts[]` may legitimately be empty). */
-function isRecordableVerdict(doc) {
+export function isRecordableVerdict(doc) {
   if (!doc || typeof doc !== "object" || Array.isArray(doc)) return false
   if (Object.keys(extractPerAssertionRecords(doc)).length > 0) return true
   return Array.isArray(doc.boundaryViolations) || Array.isArray(doc.missingDefaults) || typeof doc.verdict === "string"
@@ -1053,6 +1053,7 @@ function applyCommand(command, named, flags, state, prdDirReal) {
       const entry = { milestone, round, type, at: new Date().toISOString() }
       if (typeof flags.trigger === "string") entry.trigger = flags.trigger.split(",").map((s) => s.trim()).filter(Boolean)
       if (typeof flags.seat === "string") entry.seat = flags.seat
+      if (typeof flags.rung === "string") entry.rung = flags.rung
       if (typeof flags.note === "string") entry.note = flags.note
       next.roundLog = [...roundLog, entry]
       const CAPPED_ROUND_TYPES = ["corrective", "hardening"]

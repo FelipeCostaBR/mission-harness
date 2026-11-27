@@ -11,6 +11,21 @@ your agent — it surveys the repository and derives the values. Then run
 
 This page is the reference for what `doctor` is checking and why.
 
+## Codex runtime
+
+`mission install codex` writes `.mission/runtime` to enable Codex model
+routing. You can also set `"runtime": "codex"` in `mission.config.json`. An
+explicit `runtime` in the config takes precedence over the adapter marker.
+For Codex, worker and scout roles use the `terra` model alias. The planner,
+orchestrator and other roles use `sol`. The shipped defaults are GPT-6.1 Terra
+and GPT-6.2 Sol. Set `models.terra.codex` and `models.sol.codex` to adopt newer
+supported models without adjusting the seat ladder. For other runtimes, the
+ladder continues to return its model tiers.
+
+`usage.contextWarningTokens` and `usage.advisoryCodexCredits` tune the
+advisories in `mission usage report`. See the
+[Codex telemetry workflow](../adapters/codex/README.md#context-and-usage-reports).
+
 ---
 
 ## `areas`

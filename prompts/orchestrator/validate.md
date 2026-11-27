@@ -45,7 +45,9 @@ milestone's design spec).
 
 Give each: the `area`, the contract assertions bound to that area for this
 milestone, the `changedPaths` for that area, the project `constraints`, the
-surface's gate commands, and `missionDir`. Force the verdict schema.
+surface's gate commands, and an assigned path under `verdicts/incoming/`. Use
+the basename `<milestone>-<area>-r<n>.json` with a fresh round number for each
+attempt. Force the verdict schema in the artifact.
 
 **Five rules that apply to every validator spawn:**
 
@@ -83,7 +85,8 @@ For every `escalations[]` entry this milestone carrying `implementedBy:
 with the area validators.
 
 Payload: the escalation's reason, its `handoffs/ESC-<id>.json`, its declared file
-list, and its `workerPathGlobs`. It must (i) bound the handoff's changed paths
+list, its `workerPathGlobs`, and an assigned verdict path under
+`verdicts/incoming/` named for the milestone and escalation. It must (i) bound the handoff's changed paths
 against those globs, (ii) re-run the handoff's `verifiedBy` commands, and (iii)
 adversarially review the shared-surface change itself — type-graph blast radius,
 registry exhaustiveness, schema/migration lockstep.
@@ -152,7 +155,8 @@ area, OR **(b)** any change touches auth/session/token handling, a database
 transaction or merge, or a concurrency/idempotency path — spawn ONE read-only
 frontier-tier investigator over the milestone's commit range before advancing,
 briefed to hunt correctness, security and privacy bugs **beyond** the contract
-assertions.
+assertions. Assign a `reviews/` artifact and use `mission digest` for the
+compact return.
 
 Record it on its OWN counter `adversarialRounds[<milestone>]` (cap 1) and append
 a `roundLog[]` entry with `type: "adversarial"`. It is **not** drawn from the
@@ -166,24 +170,28 @@ advance**; those fixes are ordinary corrective rounds.
 
 Two steps, in this order, no exceptions.
 
-**a. Immutable raw capture.** Write each validator's returned object VERBATIM to
-`<missionDir>/verdicts/<name>.json` — byte for byte, no summarizing, no
-paraphrasing, no cleaning up. Do this for **every** validator BEFORE reading any
-verdict value.
+**a. Immutable raw capture.** Assign a new path under `verdicts/incoming/` per
+validator attempt. The validator writes the raw object to its assigned path
+and returns a short handoff. For a filesystem read-only validator, capture the
+raw response directly to that path from the runner. After the seat finishes,
+verify the artifact with `mission digest <missionDir> verdicts/incoming/<name>.json`.
+Read the raw file for details needed to act on a blocker, test gap, or
+inconclusive result.
 
-If a validator did not return, its verdict file is absent → that area is
-**failing by default**, never assumed-pass.
+If a validator does not finish or its artifact is missing or invalid, its
+result is unverified. A handoff or digest cannot substitute for the raw
+object.
 
 **b. Mechanical derivation.** Compute `assertionStatus` STRICTLY from the
 persisted files, with the CLI doing the derivation:
 
 ```
-mission state <missionDir> record-verdict <milestone> verdicts/<name>.json
+mission state <missionDir> record-verdict <milestone> verdicts/incoming/<name>.json
 ```
 
 It reads the raw file, re-derives every assertion id it touches by the same
 rule `set-assertion` enforces (the newest verdicts must unanimously pass), and
-writes the evidence before the derived state. You may not write
+copies the evidence to `verdicts/<name>.json` before writing the derived state. You may not write
 `assertionStatus` from expectation, and may not write it before every
 validator's file exists.
 
@@ -248,7 +256,8 @@ For a real failure:
   The worker climbs one rung per failure, two when the same check failed in the
   previous round, and never above its ceiling. A `spec` cause never climbs —
   the contract is wrong, so fix the contract, not the seat. Pass the returned
-  `<model>/<effort>` as `--seat` so a retro can tell whether the climb helped.
+  `<model>/<effort>` as `--seat` and `rung` as `--rung`. The rung lets
+  the next round resume correctly when two rungs use the same model and effort.
   A red **gate** with a clear cause in one area goes to the fixer seat
   (`mission prompt seats/fixer`) rather than a fresh worker.
 
@@ -306,9 +315,8 @@ boundary.
 
 ### 5a. Write the checkpoint, then discharge any context reset
 
-The milestone boundary is the only point where mission state is provably
-consistent — verdicts persisted, gate green, commits made, no worker in flight —
-so it is the only safe place to reset your window.
+During execution, checkpoint at the milestone boundary once verdicts are
+persisted, gates have passed, commits are saved, and no workers are in flight.
 
 **Record the knowledge half** with `mission state add-decision` and
 `mission state add-constraint`:
@@ -373,6 +381,9 @@ commit range**, briefed with the whole contract PLUS the accumulated `decisions[
 and `constraints[]`. Those exist now, so it can check whether the shipped code
 still honours the reasoning that produced it — which no per-milestone pass can
 see.
+
+Assign this reviewer a separate `reviews/` artifact and take a compact
+`mission digest` before reading any findings that require a decision.
 
 Record `missionFinalReview: { ran, findings, ts }` — never on `correctiveRounds`,
 so running it cannot trip the breaker. Confirmed findings block `done` and route

@@ -89,7 +89,10 @@ context — is a cache that will be lost.
   validation-contract.json     what "done" means. Written and approved BEFORE code.
   mission-state.json           position, knowledge, telemetry, bookkeeping
   handoffs/<feature>.json      one per worker, written BY the worker itself
-  verdicts/<name>.json         one per validator, the RAW returned object
+  verdicts/<name>.json         raw verdicts accepted by record-verdict
+  verdicts/incoming/           validator output before record-verdict
+  reviews/<name>.json          review findings and rejected candidates
+  .usage/                      local attempt accounting, excluded from version control
   .pending-validation.json     the edit-routing queue (machine-local)
 ```
 

@@ -153,6 +153,8 @@ Missions
   disarm [status] [dir]       halted | gated | done
   status                      armed state + milestone position
   brief                       the rehydration digest for a fresh context
+  digest <dir> <artifact>     summarize a review or raw verdict
+  usage <start|finish|report> <dir> …  track Codex attempts and usage estimates
   state [dir] <cmd> …         the ONLY way to change mission-state.json after
                               approval: locked, atomic, bookkeeping-checked
 

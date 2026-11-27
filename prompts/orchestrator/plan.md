@@ -276,7 +276,11 @@ blind spots: what you miss as the skeptic you will miss again as the guardian,
 and the review comes back fast and clean for entirely the wrong reason. This is
 the same independence the harness buys for validators.
 
-Give them the draft contract and milestones. Roles:
+Give them the draft contract, milestones, and one distinct `reviews/<name>.json`
+path each. Use the `seats/reviewer` artifact format and inspect the compact
+`mission digest <missionDir> reviews/<name>.json` output first. Read all the
+findings needed to adjudicate the plan, including any omitted from the digest.
+Roles:
 
 - **Skeptic** — for each assertion, name a way it PASSES WHILE THE FEATURE IS
   BROKEN.
@@ -327,4 +331,6 @@ proceed to `run` without approval. If they want changes, revise and re-render.
 ## Output
 
 On approval: the contract and `mission-state.json` are written, and the first
-milestone is selected. **Spawn no workers here** — that is `run`.
+milestone is selected. Persist the approval and decisions, then hand the mission
+path to a fresh coordinator. Start it with `mission brief <missionDir>` and the
+`run` prompt. **Spawn no workers here** — that is `run`.

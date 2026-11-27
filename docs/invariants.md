@@ -173,8 +173,8 @@ window change was.
 
 Therefore: the artifacts are the only memory; `mission brief` replaces
 re-reading; `decisions[]` and `constraints[]` are written at every boundary; and
-the reset fires **at a milestone boundary, never at a token threshold** — a
-threshold can land mid-worker and checkpoint a torn state.
+reset occurs **after plan approval or at a milestone boundary** when artifacts
+are persisted and no workers are in flight. Context warnings are advisory.
 
 A brief carrying status alone did **not** reduce the toll in practice. The
 knowledge half is what makes a reset cheap, and a cheap reset is what makes

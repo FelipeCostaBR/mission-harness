@@ -126,18 +126,40 @@ node -e '
 const fs = require("fs");
 const p = "docs/prd/demo/mission-state.json";
 const s = JSON.parse(fs.readFileSync(p, "utf8"));
-s.assertionStatus = { "A-1": "passing" };
 s.correctiveRounds = { M1: 0 };
 s.integrationGate.passed = true;
 fs.writeFileSync(p, JSON.stringify(s, null, 2));
-fs.writeFileSync("docs/prd/demo/verdicts/M1-billing.json", JSON.stringify({
+fs.writeFileSync("docs/prd/demo/verdicts/incoming/M1-billing-r1.json", JSON.stringify({
   area: "billing",
   verdicts: [{ id: "A-1", verdict: "pass", evidence: "npm test exit 0" }],
   boundaryViolations: [], missingDefaults: [], testGaps: []
 }, null, 2));
 '
+RAW=verdicts/incoming/M1-billing-r1.json
+$CLI digest "$M" "$RAW" | grep -q '"passing":1' || fail "raw verdict digest did not report a pass"
+adv | grep -q CORRECTIVE || fail "unrecorded verdict must not drive an advance"
+if $CLI state "$M" set-assertion A-1 passing > /dev/null 2>&1; then
+  fail "unrecorded verdict supplied evidence for a passing assertion"
+fi
+$CLI state "$M" record-verdict M1 "$RAW" > /dev/null
+cmp -s "$M/$RAW" "$M/verdicts/M1-billing-r1.json" || fail "record-verdict did not retain the raw bytes"
 adv | grep -q ADVANCE || fail "a clean milestone should yield ADVANCE"
 ok "advance decisions correct"
+
+echo "== attempt usage =="
+$CLI usage start "$M" '{"id":"first","role":"validator","phase":"validate","model":"gpt-6.2-sol"}' > /dev/null
+$CLI usage finish "$M" first interrupted > /dev/null
+$CLI usage start "$M" '{"id":"second","role":"validator","phase":"validate","model":"gpt-6.2-sol","retryOf":"first"}' > /dev/null
+printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":1000,"cached_input_tokens":950,"output_tokens":25}}' > usage.jsonl
+SOURCE="$(node -pe 'JSON.stringify({format:"codex-exec",path:require("node:path").resolve("usage.jsonl")})')"
+$CLI usage finish "$M" second completed "$SOURCE" > /dev/null
+$CLI usage report "$M" --json | node -e '
+const r = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
+if (r.attempts !== 2 || r.retries !== 1 || r.interrupted !== 1 || r.missingUsage !== 1 ||
+    r.totals.input !== 1000 || r.totals.standardApiUsdBeforeCacheWrites !== null) process.exit(1);
+' || fail "usage report did not account for both attempts"
+adv | grep -q ADVANCE || fail "usage report changed the advance decision"
+ok "usage includes retries and leaves validation intact"
 
 echo "== gated is not done =="
 node -e '
@@ -164,6 +186,40 @@ grep -q '"missionStatus": "gated"' "$M/mission-state.json" || fail "disarm did n
 echo '{"tool_name":"Edit","tool_input":{"file_path":"src/auth/session.ts"}}' | $CLI route
 grep -q 'session.ts' "$M/.pending-validation.json" && fail "the hook must be inert once disarmed"
 ok "disarmed, hook inert"
+
+echo "== Codex adapter model routing =="
+seat_model() { node -pe 'JSON.parse(require("fs").readFileSync(0, "utf8")).model'; }
+[ "$($CLI seat resolve '{"role":"worker"}' | seat_model)" = sonnet ] || fail "generic worker tier changed"
+cp mission.config.json expected-config.json
+printf '%s\n' '# Existing project instructions' > AGENTS.md
+$CLI install codex > /dev/null
+cmp -s mission.config.json expected-config.json || fail "adapter overwrote the project config"
+[ "$(cat AGENTS.md)" = '# Existing project instructions' ] || fail "adapter overwrote project instructions"
+for role in worker scout browser-scout; do
+  [ "$($CLI seat resolve "{\"role\":\"$role\"}" | seat_model)" = gpt-6.1-terra ] || fail "$role should use Terra"
+done
+[ "$($CLI seat resolve '{"role":"validator"}' | seat_model)" = gpt-6.2-sol ] || fail "validator should use Sol"
+[ "$($CLI seat session orchestrator | seat_model)" = gpt-6.2-sol ] || fail "orchestrator should use Sol"
+$CLI prompt seats/browser-scout | grep -q '"observation"' || fail "browser scout prompt is missing URL evidence"
+
+first=$($CLI seat corrective "$M" M1 --cause assertion --triggers '["A-1"]')
+node -e 'const s = JSON.parse(process.argv[1]); if (s.model !== "gpt-6.1-terra" || s.rung !== "L4") process.exit(1)' "$first" \
+  || fail "first correction should climb one rung on Terra"
+$CLI state "$M" bump-round M1 --type corrective --trigger A-1 --seat gpt-6.1-terra/high --rung L4 > /dev/null
+second=$($CLI seat corrective "$M" M1 --cause assertion --triggers '["A-2"]')
+node -e 'const s = JSON.parse(process.argv[1]); if (s.model !== "gpt-6.1-terra" || s.rung !== "L5") process.exit(1)' "$second" \
+  || fail "next correction should resume from the recorded L4 rung"
+
+node -e '
+const fs = require("fs");
+const cfg = JSON.parse(fs.readFileSync("mission.config.json", "utf8"));
+cfg.models.terra = { codex: "terra-new-release" };
+cfg.models.sol = { codex: "sol-new-release" };
+fs.writeFileSync("mission.config.json", JSON.stringify(cfg));
+'
+[ "$($CLI seat resolve '{"role":"browser-scout"}' | seat_model)" = terra-new-release ] || fail "Terra override was ignored"
+[ "$($CLI seat session planner | seat_model)" = sol-new-release ] || fail "Sol override was ignored"
+ok "Codex defaults, corrective rungs and model upgrades resolve"
 
 echo
 echo "PASS — CLI smoke test"
