@@ -22,6 +22,21 @@ That copies into your project:
 
 Existing files are **not** overwritten.
 
+### Or once, for every project (user scope)
+
+```bash
+npm install -g mission-harness
+mission install claude-code --scope user     # --target <dir> to choose; --force to refresh
+```
+
+This copies the same skills and agents into `~/.claude/skills` and
+`~/.claude/agents`, so `write-a-prd`, `mission-harness` and the phase skills are
+available in every project with no per-project copy. It does **not** touch any
+settings file: merge `.claude/mission-harness-settings-snippet.json` into
+`~/.claude/settings.json` yourself if you want the hooks everywhere. Each hook is
+a no-op in a project with no `mission.config.json` or no armed mission. A project
+still needs its own `mission init` + `mission doctor` before a mission runs.
+
 ## Wire the hooks
 
 Merge `.claude/mission-harness-settings-snippet.json` into your
@@ -31,7 +46,7 @@ hooks of your own.
 | Hook | Why |
 | --- | --- |
 | `PostToolUse` → `mission route` | Routes every edit to its owning area and queues it for validation. Inert outside a mission; it never blocks a tool call. |
-| `SessionStart` → `mission brief --only-active` | Injects the rehydration brief when a mission is armed and active. A fresh window inherits position and knowledge for ~1.5k tokens instead of re-deriving from source. |
+| `SessionStart` → `mission brief --only-active` | Injects the rehydration brief when a mission is armed and active. A fresh window inherits position and knowledge for ~1.5k tokens instead of re-deriving from source. With an approved `autopilot` record it adds the `AUTOPILOT` line: a directive only in the session that runs that folder (armed, or on `autopilot.branch`), informational everywhere else. |
 
 ## Adapt it to your repo
 
@@ -60,7 +75,11 @@ Then in Claude Code:
 ```
 
 The orchestrator plans, blocks for your approval, then builds and validates
-milestone by milestone.
+milestone by milestone. Start from `/write-a-prd` instead and it writes the
+spec and goes straight on to the plan. Answer the approval with "approve and run
+on autopilot" and the run continues in a fresh session by itself: one PR per
+milestone, the `simplify` skill, `/code-review xhigh`, land when green, then
+follow-up triage (`mission prompt autopilot`).
 
 ## Models
 

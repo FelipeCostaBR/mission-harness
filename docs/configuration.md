@@ -105,6 +105,56 @@ architecture or consistency suite the repo has.
 **Verify every command runs before you write it down.** A gate command that does
 not exist will be "run" and "pass" for the life of the project.
 
+**Make it the gate CI runs, the whole repository's.** A scan in one package can
+read another package's files, so a gate limited to the touched areas passes
+while CI goes red (invariant 18). An entry may carry `expect`, a regular
+expression its output must match: a suite that silently ran nothing also
+exits 0.
+
+`mission gate <missionDir> <milestone>` runs the list: the database setup,
+`pre`, every `integration` entry, the milestone's `verifiedBy` re-run, then the
+teardown, under one deadline (`deadlineMinutes`, default 120), each step in its
+own process group with its own log, and records `set-gate integration`.
+
+### `gates.database` — a throwaway database for the gate
+
+Optional. When the suites need a database, give the gate its own, fresh one, the
+way CI does, so they never run against a shared one:
+
+```jsonc
+"gates": {
+  "integration": [{ "cmd": "npm test", "expect": "\\d+ passing" }],
+  "deadlineMinutes": 120,
+  "database": {
+    "enabled": true,
+    "url": "postgresql://postgres@127.0.0.1:{port}/mission_gate",
+    "port": 5456,
+    "envKeys": ["DATABASE_URL"],
+    "forbid": ["<a substring of your production host>"],
+    "setup": [
+      "initdb -D {dataDir} -U postgres -A trust -E UTF8 --locale=C",
+      "pg_ctl -D {dataDir} -l {logDir}/db.log -w start -o \"-p {port} -c listen_addresses=127.0.0.1 -c unix_socket_directories=''\"",
+      "createdb -h 127.0.0.1 -p {port} -U postgres mission_gate",
+      "npm run db:migrate && npm run db:seed"
+    ],
+    "teardown": ["pg_ctl -D {dataDir} -m fast -w stop"],
+    "stoppedCheck": "pg_ctl -D {dataDir} status; test $? -eq 3"
+  }
+}
+```
+
+- `{dataDir}` is a fresh temp directory, `{port}` the port (`--port` overrides),
+  `{logDir}` the gate's log directory; paths are shell-quoted for you.
+- Every gate child runs with each `envKeys` variable **overridden** to `url`.
+  `url` must be on loopback (or a host-less file URL), and an inherited value
+  containing any `forbid` substring refuses the run before anything starts.
+- `setup` steps are critical: one failing skips the suites. `teardown` always
+  runs, on a signal too. The data directory is deleted only once `stoppedCheck`
+  exits 0 (or, with no check, the teardown was green); `--keep-db` keeps it.
+- Postgres on macOS: set `LC_ALL` in your shell if the server refuses to start,
+  and keep `unix_socket_directories=''`, because a deep temp path overflows the
+  socket path limit.
+
 ---
 
 ## `protectedPaths`
@@ -271,3 +321,27 @@ A mission with an unverified live gate is recorded **`gated`, not `done`**.
 
 `areas` is the single source for each area's flows and expected signals, so the
 contract and a manual run cannot drift apart.
+
+---
+
+## `autopilot`
+
+Settings for the end-to-end run a human may approve at plan time
+(`docs/protocol.md` § Autopilot). The approval itself lives in
+`mission-state.json`, never here.
+
+```jsonc
+"autopilot": {
+  "landCommand": "gh pr merge {pr} --squash --auto",
+  "maxLandFixRounds": 3,
+  "followUpBatchSize": 5,
+  "smallFixMaxLines": 150
+}
+```
+
+- `landCommand` is how a PR lands once every check is green: your own script, a
+  merge queue, or your forge's auto-merge. Empty means "the project's documented
+  land step". It must never push to the default branch directly.
+- `maxLandFixRounds` bounds the red-check fix loop before the run blocks.
+- `followUpBatchSize` and `smallFixMaxLines` bound what triage may fix itself;
+  anything larger is deferred with a reason.

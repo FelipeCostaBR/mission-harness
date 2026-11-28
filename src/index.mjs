@@ -25,6 +25,27 @@ export { commitBoundaryReport, collectCommits } from "./rules/commit-boundary.mj
 export { verifiedByRecordProblem, verifiedByProblems } from "./rules/verified-by.mjs"
 export { validateScoutReply, SCOUT_REPLY_SCHEMA } from "./rules/scout-schema.mjs"
 export { runCLI as runStateCommand, COMMAND_NAMES as STATE_COMMANDS } from "./state/mission-state.mjs"
+export {
+  autopilotProblems,
+  autopilotOwesWork,
+  nextAutopilotStep,
+  autopilotDirective,
+  pickAutopilotMission,
+  isSafeMissionDir,
+  AUTOPILOT_PHASES,
+  AUTOPILOT_SUBFIELDS,
+} from "./rules/autopilot.mjs"
+export {
+  newFollowUpLines,
+  serialDispatchConflict,
+  expandVerifiedEntry,
+  isAdmissibleProof,
+  milestoneEscalationProofs,
+  planTestGapRecords,
+  extractVerdictFromTranscript,
+  verdictModuleOf,
+} from "./rules/evidence.mjs"
+export { buildGatePlan, gateRecord, gateEnv, assertLocalDatabaseUrl, expandGateCommand, gateDatabase } from "./rules/gate.mjs"
 export { digestFromHandoff, HANDOFF_DIGEST_SCHEMA } from "./rules/handoff-digest.mjs"
 export { rehydrationPlan, renderRehydrationBrief } from "./rules/rehydration.mjs"
 export {

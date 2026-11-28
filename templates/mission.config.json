@@ -37,11 +37,28 @@
     "graph, an exhaustive registry, a generated client, a cross-source consistency",
     "suite. Every command must exit 0 before a milestone advances.",
     "`pre` runs first — put cache-busters here. An incremental typecheck with a",
-    "warm build cache skips re-checking touched files and reports a FALSE green."
+    "warm build cache skips re-checking touched files and reports a FALSE green.",
+    "Make `integration` the WHOLE gate CI runs, never only the touched areas.",
+    "An entry may be {\"cmd\", \"why\", \"expect\"}: `expect` is a regex its output",
+    "must match, because a suite that silently ran nothing also exits 0.",
+    "`database` (optional) is a THROWAWAY database `mission gate` brings up first",
+    "and tears down last; every gate child gets `envKeys` overridden with `url`,",
+    "which must be on loopback. See docs/configuration.md."
   ],
   "gates": {
     "pre": [],
-    "integration": []
+    "integration": [],
+    "deadlineMinutes": 120,
+    "database": {
+      "enabled": false,
+      "url": "",
+      "port": 5456,
+      "envKeys": ["DATABASE_URL"],
+      "forbid": [],
+      "setup": [],
+      "teardown": [],
+      "stoppedCheck": ""
+    }
   },
 
   "//protectedPaths": [
@@ -118,6 +135,18 @@
     "regression, and never a false pass), anything else fails.",
     "A mission with an unverified live gate is recorded `gated`, NOT `done`."
   ],
+  "//autopilot": [
+    "The end-to-end run a human may approve at plan time (docs/protocol.md,",
+    "Autopilot). `landCommand` lands a PR once every check is green; `{pr}` is",
+    "the PR number. It must never push to the default branch."
+  ],
+  "autopilot": {
+    "landCommand": "",
+    "maxLandFixRounds": 3,
+    "followUpBatchSize": 5,
+    "smallFixMaxLines": 150
+  },
+
   "liveGate": {
     "enabled": false,
     "runner": "",

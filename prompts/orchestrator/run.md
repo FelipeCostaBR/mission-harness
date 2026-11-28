@@ -178,6 +178,15 @@ know their own spend, so a worker-claimed number would be fiction.
 A handoff naming a shared, cross-area, or protected-path change is an escalation.
 The worker must NOT have made it. Escalations are always serial.
 
+`mission state <missionDir> dispatch-esc <id> --files '<json>' --reason "…"`
+routes the files and records the dispatch (route, grant, `implementedBy`,
+`in-progress`, `activeWorker`) in one write, and refuses a second delegate while
+one is in progress. `close-esc <id> --verified '<json>' --tokens <n>` records the
+return in one write: it merges the handoff's `_meta` (refusing when the handoff
+is missing), marks the escalation done with its proofs, and clears
+`activeWorker`. Each `--verified` entry states `readOnly: true` itself; the verb
+never stamps it. The manual route below remains valid.
+
 **Route it first, mechanically:**
 
 ```
@@ -246,6 +255,10 @@ holds none of the rationalisations for why the code looks the way it does.
 
 - Bound each worker to its area's `pathGlobs`, exactly like a feature worker.
   They may run in parallel across areas (disjoint by construction).
+- **Use the runtime's own simplify capability** when it has one (the adapter
+  names it): brief the worker to run it on the area's changed files, and to say
+  in its handoff that it ran. A paraphrase of its remit in the spawn prompt is a
+  weaker pass.
 - **Cross-area finds are PROPOSALS, never edits.** Simplify's highest-value
   results usually cross area lines, and a path-scoped worker structurally cannot
   make those edits. It reports them; you route each through `mission escalate`

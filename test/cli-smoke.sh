@@ -157,6 +157,13 @@ grep -q "Mission rehydration brief" /tmp/mission-brief.$$ || fail "brief did not
 rm -f /tmp/mission-brief.$$
 ok "brief renders within budget"
 
+echo "== gate =="
+$CLI gate "$M" M1 > /tmp/mission-gate.$$ 2>&1 || { cat /tmp/mission-gate.$$; fail "the configured gate should run green"; }
+grep -q "GATE M1 passed=true" /tmp/mission-gate.$$ || fail "gate did not report green"
+grep -q '"passed": true' "$M/mission-state.json" || fail "gate did not record set-gate integration"
+rm -f /tmp/mission-gate.$$
+ok "gate runs the config's commands and records itself"
+
 echo "== disarm =="
 $CLI disarm gated "$M" > /dev/null
 $CLI status | grep -q INERT || fail "disarm did not go inert"
@@ -164,6 +171,16 @@ grep -q '"missionStatus": "gated"' "$M/mission-state.json" || fail "disarm did n
 echo '{"tool_name":"Edit","tool_input":{"file_path":"src/auth/session.ts"}}' | $CLI route
 grep -q 'session.ts' "$M/.pending-validation.json" && fail "the hook must be inert once disarmed"
 ok "disarmed, hook inert"
+
+echo "== autopilot =="
+$CLI state "$M" set-field autopilot '{"enabled":true,"phase":"run-pending","approvedBy":"agent","approvedAt":"2026-01-01T00:00:00Z","brief":"b"}' 2>/dev/null \
+  && fail "an agent must not be able to record an approval"
+$CLI state "$M" set-field autopilot '{"enabled":true,"phase":"triage","approvedBy":"human","approvedAt":"2026-01-01T00:00:00Z","brief":"Triage the follow-ups.","branch":"smoke/triage"}' > /dev/null \
+  || fail "a human approval record was refused"
+$CLI brief --only-active | grep -q "AUTOPILOT (informational" || fail "an unrelated branch should get the informational line only"
+git checkout -q -b smoke/triage
+$CLI brief --only-active | grep -q "Next step: triage" || fail "the autopilot branch should get the directive"
+ok "autopilot directive only on its own branch"
 
 echo
 echo "PASS — CLI smoke test"

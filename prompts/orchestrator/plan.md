@@ -321,10 +321,18 @@ Produce a human-readable markdown summary in your reply, not just JSON:
 The human is approving the *reviewed* plan, so what the review moved is part of
 what they are approving.
 
-Then ask for an explicit **approve / revise** decision and **stop**. Do not
-proceed to `run` without approval. If they want changes, revise and re-render.
+Then ask for an explicit **approve / approve and run on autopilot / revise**
+decision and **stop**. Do not proceed to `run` without approval. If they want
+changes, revise and re-render.
+
+**On "approve and run on autopilot"** (`mission prompt autopilot` § 2), and only
+on the human's own answer: write the record through the CLI,
+`mission state <missionDir> set-field autopilot '{"enabled":true,"phase":"run-pending","approvedBy":"human","approvedAt":"<date -u>","brief":"…","branch":"…","dependsOn":[…],"owner":[…]}'`,
+once per milestone folder when the plan is split for parallel milestones. Commit
+the plan on its own branch, have that PR reviewed (it carries the record, and the
+CLI cannot prove consent), land it, and start the run in a fresh context.
 
 ## Output
 
 On approval: the contract and `mission-state.json` are written, and the first
-milestone is selected. **Spawn no workers here** — that is `run`.
+milestone is selected. Under autopilot, the fresh run session takes it from here. **Spawn no workers here** — that is `run`.

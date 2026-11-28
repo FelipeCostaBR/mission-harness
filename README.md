@@ -144,7 +144,9 @@ Setup
   init                        scaffold mission.config.json
   doctor                      validate the config against this repository
   migrate <agent-routing.json> draft the config from an older harness's registry
-  install [adapter]           wire the prompts into an agent runtime
+  install [adapter] [--scope user]
+                              wire the prompts into an agent runtime; user scope
+                              puts the same skills in every project
   prompt [name]               print a seat prompt (works with ANY model)
 
 Missions
@@ -155,6 +157,8 @@ Missions
   brief                       the rehydration digest for a fresh context
   state [dir] <cmd> …         the ONLY way to change mission-state.json after
                               approval: locked, atomic, bookkeeping-checked
+  gate [dir] <milestone>      the whole milestone gate from the config, on a
+                              throwaway database if configured, recorded
 
 Decisions  (pure rules, evaluated against the mission's artifacts)
   check                       bookkeeping invariants
@@ -169,7 +173,8 @@ Decisions  (pure rules, evaluated against the mission's artifacts)
 
 Hooks
   route                       PostToolUse: queue an edit for its area
-  brief --only-active         SessionStart: inject the brief when a mission is live
+  brief --only-active         SessionStart: inject the brief when a mission is live,
+                              plus the AUTOPILOT directive in the session that runs it
   compact                     PreCompact: stamp a breadcrumb before a lossy summary
 ```
 
@@ -178,7 +183,18 @@ Hooks
 `mission prompt write-a-prd` (the `write-a-prd` skill in Claude Code) interviews
 you, explores the repository in the config's vocabulary, and writes
 `docs/prd/<id>/spec.md` with the four sections the planner depends on:
-Surfaces & Areas, Acceptance Criteria, Escalations and Milestones.
+Surfaces & Areas, Acceptance Criteria, Escalations and Milestones. It then goes
+straight on to the plan on that folder, so the chain is one workflow:
+
+```
+write-a-prd ─► plan ─► you approve the contract ─► run ⇄ validate ─► finish
+                                └─ "approve and run on autopilot": a fresh-context run,
+                                   one PR per milestone (gate, validators, simplify,
+                                   code review, land when green), then follow-up triage
+```
+
+Autopilot is the same loop with the hand-offs automated; see
+[protocol.md § Autopilot](docs/protocol.md#autopilot--the-same-loop-without-a-human-at-every-hand-off).
 
 ## The seats
 
@@ -259,7 +275,7 @@ goes wrong while everything reports green.
 
 | | |
 | --- | --- |
-| [protocol.md](docs/protocol.md) | Seats, artifacts, the loop, terminal states |
+| [protocol.md](docs/protocol.md) | Seats, artifacts, the loop, terminal states, autopilot |
 | [schemas.md](docs/schemas.md) | Every JSON artifact, annotated |
 | [invariants.md](docs/invariants.md) | The rules, and what breaking each one cost |
 | [configuration.md](docs/configuration.md) | `mission.config.json` reference |
