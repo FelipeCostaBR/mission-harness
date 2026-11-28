@@ -140,7 +140,9 @@ area-local."
 
 Features grouped into contract slices in dependency order: `id`, features,
 assertions, and the `design-<id>.md` for any design-spec surface. Isolate
-escalations early, split surfaces, order by dependency.
+escalations early, split surfaces, order by dependency. Say which milestones
+depend on which (`M2 consumes M1's interface`) and which could run in parallel:
+the plan uses that to give parallel milestones their own folders and sessions.
 
 ## Testing Decisions
 
@@ -158,8 +160,14 @@ the contract.
 
 </prd-template>
 
-## 5. Hand off
+## 5. Hand off — straight into the plan
 
-Tell the user the PRD is ready and that the next step is the plan phase on
-`<paths.missions>/<id>/`, which reads this folder, writes the validation
-contract, and **blocks for their approval before any code is written.**
+This folder IS the mission's input. Do not end the session on "the PRD is
+ready": go on to the plan phase (`mission prompt plan`) on
+`<paths.missions>/<id>/` in this same session, so the user is not asked to
+re-prompt. Tell them in one line that you are doing so. The plan reads this
+folder, writes the validation contract, and **blocks for their approval before
+any code is written.** Its approval question offers "approve and run on
+autopilot": with that answer the run starts in a fresh context by itself and
+goes milestone by milestone to merged PRs and follow-up triage
+(`mission prompt autopilot`).

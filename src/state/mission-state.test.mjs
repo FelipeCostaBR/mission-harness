@@ -525,14 +525,15 @@ test("set-gate integration preserves a milestone-KEYED prior gate under .history
   assert.deepEqual(state.integrationGate.history.M2, { passed: true, scope: "M2 gate", ts: "2026-10-05T00:00:00Z" })
 })
 
-test("set-gate integration refuses a payload missing passed, scope or ts (byte-identical)", () => {
+test("set-gate integration refuses a payload missing passed or scope, or with an unparseable ts (byte-identical)", () => {
   const { dir, statePath } = makeTempPrd()
   const before = readRaw(statePath)
   for (const bad of [
-    { scope: "s", ts: "t" }, // no passed
-    { passed: true, ts: "t" }, // no scope
-    { passed: true, scope: "s" }, // no ts
-    { passed: "true", scope: "s", ts: "t" }, // passed is a string, not boolean
+    { scope: "s", ts: "2026-01-22T00:00:00Z" }, // no passed
+    { passed: true, ts: "2026-01-22T00:00:00Z" }, // no scope
+    { passed: true, scope: "s", ts: "t" }, // ts given but not a date
+    { passed: true, scope: "s", ts: 5 }, // ts not a string
+    { passed: "true", scope: "s", ts: "2026-01-22T00:00:00Z" }, // passed is a string, not boolean
   ]) {
     const r = runCLI([dir, "set-gate", "integration", JSON.stringify(bad)])
     assert.notEqual(r.exitCode, 0, JSON.stringify(bad))
@@ -592,16 +593,18 @@ test("merge-meta creates _meta on a handoff that has none, and never touches mis
   const stateBefore = readRaw(statePath)
   const r = runCLI([dir, "merge-meta", "handoffs/WEB-auth-backend.json", JSON.stringify({ tokensSpent: 41200, attribution: "exact" })])
   assert.equal(r.exitCode, 0, r.stderr)
-  assert.deepEqual(JSON.parse(readRaw(handoffPath))._meta, { tokensSpent: 41200, attribution: "exact" })
+  const { ts, ...meta } = JSON.parse(readRaw(handoffPath))._meta
+  assert.deepEqual(meta, { tokensSpent: 41200, attribution: "exact" })
+  assert.ok(Math.abs(Date.parse(ts) - Date.now()) < 60_000, `ts defaults to now when omitted (got ${ts})`)
   assert.equal(readRaw(statePath), stateBefore) // merge-meta's target is the handoff, not mission-state
   assertSingleLine(r.stdout)
 })
 
-test("merge-meta merges into an existing _meta rather than replacing it", () => {
+test("merge-meta merges into an existing _meta rather than replacing it (a given ts is kept as given)", () => {
   const { dir } = makeTempPrd()
   const handoffPath = writeHandoff(dir, "h.json", { feature: "h", _meta: { tokensSpent: 100, attribution: "batch" } })
-  runCLI([dir, "merge-meta", "handoffs/h.json", JSON.stringify({ tokensSpent: 200 })])
-  assert.deepEqual(JSON.parse(readRaw(handoffPath))._meta, { tokensSpent: 200, attribution: "batch" })
+  runCLI([dir, "merge-meta", "handoffs/h.json", JSON.stringify({ tokensSpent: 200, ts: "2026-01-02T00:00:00Z" })])
+  assert.deepEqual(JSON.parse(readRaw(handoffPath))._meta, { tokensSpent: 200, attribution: "batch", ts: "2026-01-02T00:00:00Z" })
 })
 
 test("merge-meta refuses a merge that fails checkHandoffMeta, leaving the handoff byte-identical", () => {
@@ -843,6 +846,12 @@ test("usage lists exactly the ported commands: no set-contract-status, no add-am
     "set-field",
     "add-feature",
     "add-assertion",
+    "dispatch-esc",
+    "close-esc",
+    "rerun-verified",
+    "record-testgaps-from-verdicts",
+    "append-followups",
+    "capture-verdict",
   ])
 })
 
@@ -1039,13 +1048,24 @@ test("isMain resolves through an invocation path containing a space", () => {
   // space-containing directory — a `new URL(...).pathname` compare leaves
   // "%20" un-decoded against argv[1]'s raw space, so this failed even with no
   // symlink involved. The copied set is also the CLI's whole import closure:
-  // it must not need any module beyond these three.
+  // it must not need any module beyond these.
   const { dir, statePath } = makeTempPrd()
   const srcDir = path.dirname(path.dirname(CLI_PATH))
   const spacedDir = mkdtempSync(path.join(tmpdir(), "mscli space "))
   mkdirSync(path.join(spacedDir, "state"))
   mkdirSync(path.join(spacedDir, "rules"))
-  for (const name of ["state/mission-state.mjs", "rules/bookkeeping.mjs", "rules/resume.mjs"]) {
+  mkdirSync(path.join(spacedDir, "io"))
+  for (const name of [
+    "state/mission-state.mjs",
+    "rules/bookkeeping.mjs",
+    "rules/resume.mjs",
+    "rules/escalation-route.mjs",
+    "rules/boundary.mjs",
+    "rules/autopilot.mjs",
+    "rules/evidence.mjs",
+    "rules/verified-by.mjs",
+    "io/proofs.mjs",
+  ]) {
     writeFileSync(path.join(spacedDir, name), readFileSync(path.join(srcDir, name), "utf8"), "utf8")
   }
   const spacedCli = path.join(spacedDir, "state", "mission-state.mjs")

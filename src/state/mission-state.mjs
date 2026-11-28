@@ -32,6 +32,7 @@ import {
   renameSync,
   readdirSync,
   mkdirSync,
+  mkdtempSync,
   realpathSync,
   statSync,
   openSync,
@@ -58,6 +59,37 @@ import {
   QUEUE_SUBSTRATE_STATUSES,
 } from "../rules/bookkeeping.mjs"
 import { resumePlan } from "../rules/resume.mjs"
+import { routeEscalation } from "../rules/escalation-route.mjs"
+import { AUTOPILOT_SUBFIELDS, autopilotProblems } from "../rules/autopilot.mjs"
+import {
+  TEST_GAP_KINDS,
+  activeWorkerWithout,
+  expandVerifiedEntry,
+  extractVerdictFromTranscript,
+  milestoneEscalationProofs,
+  newFollowUpLines,
+  normalizeAgentId,
+  parseFileList,
+  planTestGapRecords,
+  proofSignature,
+  serialDispatchConflict,
+  verdictModuleOf,
+} from "../rules/evidence.mjs"
+import { confineToTempRoots, findTranscript, runProofs } from "../io/proofs.mjs"
+import { execFileSync } from "node:child_process"
+import { tmpdir } from "node:os"
+
+/** A given `ts` must be a parseable ISO-8601 date-time (invariant 19: time is
+ *  machine-stamped; a typed "yesterday" is refused, never stored). */
+function assertIsoTs(ts, label) {
+  if (typeof ts !== "string" || !/^\d{4}-\d{2}-\d{2}T/.test(ts) || !Number.isFinite(Date.parse(ts))) {
+    throw new CliError(`${label}: ts must be an ISO-8601 date-time string such as 2026-01-31T10:00:00Z (omit it to stamp now)`, 1)
+  }
+}
+
+/** Set per runCLI call from opts.escalation (the config's protectedPaths,
+ *  testGlobs and additivePairs); read by dispatch-esc's routeEscalation. */
+let ESCALATION_CONFIG = {}
 
 /** The full allowed `assertionStatus` value set, DERIVED from the same source
  *  bookkeeping.mjs and the no-device/hypothesis-gate rules already use, so this
@@ -89,7 +121,6 @@ export const ESCALATION_IMPLEMENTERS = Object.freeze([ESCALATION_WORKER_MARKER, 
 export const COMPACTIONS_KEPT = 10
 
 const APPEND_LISTS = Object.freeze(["followUps", "testGaps", "compactions"])
-const TEST_GAP_KINDS = Object.freeze(["mocked-boundary", "behavioral-not-run", "missing-edge-cases", "impl-mirroring"])
 
 class CliError extends Error {
   constructor(message, exitCode = 1) {
@@ -142,6 +173,19 @@ const COMMAND_SPECS = {
   "set-field": { positionals: ["path", "json"], flags: {} },
   "add-feature": { positionals: ["milestone", "featureId"], flags: { module: {}, surface: {}, pathGlobs: {} } },
   "add-assertion": { positionals: ["milestone", "id"], flags: {} },
+  // ── autopilot / evidence verbs (docs/protocol.md § Autopilot) ──
+  "dispatch-esc": {
+    positionals: ["id"],
+    flags: { files: { required: true }, feature: {}, milestone: {}, reason: {}, additive: { boolean: true }, lane: {} },
+  },
+  "close-esc": { positionals: ["id"], flags: { verified: { required: true }, tokens: {}, attribution: {}, ts: {} } },
+  "rerun-verified": { positionals: ["milestone"], flags: { root: {}, "log-dir": {}, record: { boolean: true }, "timeout-min": {} } },
+  "record-testgaps-from-verdicts": { positionals: ["milestone"], flags: { default: { required: true }, closed: {}, reason: {} } },
+  "append-followups": { positionals: ["file"], flags: {} },
+  "capture-verdict": {
+    positionals: ["milestone"],
+    flags: { as: { required: true }, transcript: {}, agent: {}, transcripts: {}, replace: { boolean: true } },
+  },
 }
 
 /** Every command `mission state` accepts. */
@@ -672,6 +716,7 @@ const SET_FIELD_ALLOW_ROOTS = new Set([
   "activeWorker",
   "planReview",
   "haltEvidence",
+  "autopilot",
 ])
 
 /** The model seats `set-field models.<seat>` may record (architecture.md
@@ -692,6 +737,7 @@ function setFieldPathShape(fieldPath) {
   if (segs.length === 2) {
     if (root === "simplifyPasses" || root === "milestoneReviews") return { kind: "milestone-keyed", milestoneSeg: 1 }
     if (root === "models" && MODEL_SEATS.includes(segs[1])) return { kind: "model-seat" }
+    if (root === "autopilot" && AUTOPILOT_SUBFIELDS.includes(segs[1])) return { kind: "autopilot-sub" }
     return null
   }
   if (segs.length === 3 && root === "budget" && segs[1] === "byMilestone") return { kind: "budget", milestoneSeg: 2 }
@@ -746,6 +792,262 @@ function setDeepPath(rootObj, fieldPath, value) {
   obj[segs[segs.length - 1]] = value
 }
 
+/** upsert-escalation's validate-and-merge, shared by dispatch-esc and close-esc
+ *  (they write the same record through the same rules). Mutates `next`. */
+function applyUpsertEscalation(next, id, payload) {
+  const out = {}
+  if ("id" in payload && payload.id !== id) {
+    throw new CliError(`upsert-escalation: payload.id "${payload.id}" does not match positional id "${id}"`, 1)
+  }
+  // Closed vocabularies: bookkeeping check 4b keys on status done|in-progress,
+  // and the 2a validator on the exact escalation-worker marker, so a typo
+  // ("complete", "escalation-wroker") would silently switch both off.
+  const enumFields = [
+    ["status", ESCALATION_STATUSES],
+    ["route", ESCALATION_ROUTES],
+    ["implementedBy", ESCALATION_IMPLEMENTERS],
+  ]
+  for (const [field, allowed] of enumFields) {
+    if (payload[field] !== undefined && !allowed.includes(payload[field])) {
+      throw new CliError(
+        `upsert-escalation: ${field} ${JSON.stringify(payload[field])} is not one of ${allowed.join("|")}`,
+        1,
+      )
+    }
+  }
+  if (payload.milestone !== undefined) assertKnownMilestone(next, payload.milestone, "upsert-escalation")
+  // `feature`: the orchestrator-owned (isEscalation) feature this escalation
+  // implements, which is how the rehydration brief counts that feature built.
+  if (payload.feature !== undefined && (typeof payload.feature !== "string" || payload.feature.length === 0)) {
+    throw new CliError("upsert-escalation: feature must be the non-empty id of the feature this escalation implements", 1)
+  }
+  if (
+    payload.workerPathGlobs !== undefined &&
+    (!Array.isArray(payload.workerPathGlobs) || !payload.workerPathGlobs.every((g) => typeof g === "string" && g.length > 0))
+  ) {
+    throw new CliError("upsert-escalation: workerPathGlobs must be an array of non-empty strings (routeEscalation's grant)", 1)
+  }
+  if (payload.files !== undefined) {
+    if (!Array.isArray(payload.files) || !payload.files.every((f) => typeof f === "string")) {
+      throw new CliError("upsert-escalation: files must be an array of strings", 1)
+    }
+    const trailing = payload.files.filter((f) => f.endsWith("/"))
+    if (trailing.length) {
+      throw new CliError(`upsert-escalation: files[] entries must not have a trailing slash: ${trailing.join(", ")}`, 1)
+    }
+  }
+  if (payload.verifiedBy !== undefined) {
+    if (!Array.isArray(payload.verifiedBy)) throw new CliError("upsert-escalation: verifiedBy must be an array", 1)
+    payload.verifiedBy.forEach((v, i) => {
+      if (!v || typeof v !== "object") throw new CliError(`upsert-escalation: verifiedBy[${i}] must be an object`, 1)
+      if (typeof v.command !== "string") throw new CliError(`upsert-escalation: verifiedBy[${i}].command must be a string`, 1)
+      if (typeof v.exit !== "number") throw new CliError(`upsert-escalation: verifiedBy[${i}].exit must be a number`, 1)
+      if (typeof v.evidence !== "string") throw new CliError(`upsert-escalation: verifiedBy[${i}].evidence must be a string`, 1)
+      if (typeof v.readOnly !== "boolean") throw new CliError(`upsert-escalation: verifiedBy[${i}].readOnly must be a boolean`, 1)
+      if (v.amends !== undefined && (typeof v.amends !== "string" || v.amends.length === 0)) {
+        throw new CliError(`upsert-escalation: verifiedBy[${i}].amends must be the non-empty command it replaces`, 1)
+      }
+      // mission-validate 2b RE-RUNS these at the boundary, so the list may
+      // hold nothing but commands that pass and change nothing: an exit 1
+      // advances a milestone carrying a red proof, and a mutating one has a
+      // validator editing tracked files to "verify".
+      if (v.exit !== 0) {
+        throw new CliError(
+          `upsert-escalation: verifiedBy[${i}].exit must be 0 — a re-runnable proof; record a red or ` +
+            `non-vacuity run under nonVacuityProofs[] ({method, result, at}) instead`,
+          1,
+        )
+      }
+      if (v.readOnly !== true) {
+        throw new CliError(
+          `upsert-escalation: verifiedBy[${i}].readOnly must be true — a validator re-runs this command; ` +
+            `record a mutating run (plant-and-restore, ablation) under nonVacuityProofs[] ({method, result, at}) instead`,
+          1,
+        )
+      }
+    })
+  }
+  if (payload.nonVacuityProofs !== undefined) {
+    if (!Array.isArray(payload.nonVacuityProofs)) {
+      throw new CliError("upsert-escalation: nonVacuityProofs must be an array", 1)
+    }
+    payload.nonVacuityProofs.forEach((p, i) => {
+      if (!p || typeof p !== "object" || Array.isArray(p)) {
+        throw new CliError(`upsert-escalation: nonVacuityProofs[${i}] must be an object`, 1)
+      }
+      for (const field of ["method", "result"]) {
+        if (typeof p[field] !== "string" || p[field].trim().length === 0) {
+          throw new CliError(`upsert-escalation: nonVacuityProofs[${i}].${field} must be a non-empty string`, 1)
+        }
+      }
+      if (typeof p.at !== "string" || !Number.isFinite(Date.parse(p.at))) {
+        throw new CliError(`upsert-escalation: nonVacuityProofs[${i}].at must be a parseable date string`, 1)
+      }
+      if ("command" in p || "exit" in p) {
+        throw new CliError(
+          `upsert-escalation: nonVacuityProofs[${i}] must not carry command/exit — it is a RECORD of a run, ` +
+            `not something a validator re-runs (that is verifiedBy)`,
+          1,
+        )
+      }
+    })
+  }
+  const escalations = Array.isArray(next.escalations) ? [...next.escalations] : []
+  const idx = escalations.findIndex((e) => e && e.id === id)
+  // CREATE needs the record's identity. No verb removes an escalation and
+  // D2 forbids hand edits, so a mistyped id with a partial payload (say only
+  // nonVacuityProofs) would otherwise become a permanent orphan that the
+  // brief lists as open for the rest of the mission. A MERGE into an
+  // existing record keeps accepting a partial payload.
+  if (idx === -1) {
+    const missing = []
+    if (payload.milestone === undefined) missing.push("milestone (a known milestone id)")
+    if (typeof payload.reason !== "string" || payload.reason.trim().length === 0) missing.push("reason (non-empty string)")
+    if (!Array.isArray(payload.files) || payload.files.length === 0 || !payload.files.every((f) => typeof f === "string" && f.length > 0)) {
+      missing.push("files (non-empty array of repo-relative paths)")
+    }
+    if (payload.status === undefined) missing.push(`status (${ESCALATION_STATUSES.join("|")})`)
+    if (missing.length) {
+      throw new CliError(
+        `upsert-escalation: refused — "${id}" is not a recorded escalation, and creating one needs ${missing.join(", ")}. ` +
+          `If you meant an existing escalation, check the id (escalations: ${
+            escalations.map((e) => e?.id).filter(Boolean).join(", ") || "none"
+          })`,
+        1,
+      )
+    }
+  }
+  const prior = idx >= 0 ? escalations[idx] : {}
+  const merged = idx >= 0 ? { ...prior, ...payload, id } : { id, ...payload }
+  // Proof lists MERGE, never replace: a call that records one more proof
+  // keeps every earlier one (the 2b gate re-runs the whole list, and a red
+  // proof is AMENDED, never deleted). verifiedBy entries key on `command`
+  // (legacy `cmd`); a new entry carrying `amends: "<old command>"` replaces
+  // exactly that entry, which is how a proof is pinned or narrowed when its
+  // command string changes. nonVacuityProofs entries key on `method`.
+  if (payload.verifiedBy !== undefined) {
+    let list = Array.isArray(prior.verifiedBy) ? [...prior.verifiedBy] : []
+    for (const [i, v] of payload.verifiedBy.entries()) {
+      if (v.amends !== undefined) {
+        const at = list.findIndex((e) => proofCommandOf(e) === v.amends)
+        if (at === -1) {
+          throw new CliError(
+            `upsert-escalation: verifiedBy[${i}].amends "${v.amends}" names no stored verifiedBy command of ${id}`,
+            1,
+          )
+        }
+        list[at] = v
+        list = list.filter((e, j) => j === at || proofCommandOf(e) !== v.command)
+      } else {
+        list = mergeProofList(list, [v], proofCommandOf)
+      }
+    }
+    merged.verifiedBy = list
+  }
+  if (payload.nonVacuityProofs !== undefined) {
+    merged.nonVacuityProofs = mergeProofList(prior.nonVacuityProofs, payload.nonVacuityProofs, (p) => p?.method)
+  }
+  if (
+    (merged.route === "inline" && merged.implementedBy === ESCALATION_WORKER_MARKER) ||
+    (merged.route === "delegate" && merged.implementedBy === ORCHESTRATOR_INLINE_MARKER)
+  ) {
+    throw new CliError(
+      `upsert-escalation: route "${merged.route}" contradicts implementedBy "${merged.implementedBy}" ` +
+        `(inline ⇒ orchestrator-inline, delegate ⇒ escalation-worker)`,
+      1,
+    )
+  }
+  if (idx >= 0) escalations[idx] = merged
+  else escalations.push(merged)
+  next.escalations = escalations
+  out.message = `upsert-escalation ${id} (${idx >= 0 ? "merged" : "added"}; escalations: ${escalations.length})`
+  return out
+}
+
+/** record-verdict's name checks, raw write and derivation over `rawText`/`raw`,
+ *  shared with capture-verdict (which takes the text from a transcript). */
+function recordVerdictText(next, flags, prdDirReal, milestone, basename, rawText, raw) {
+  const out = {}
+  // A name the deciding scan skips (dotfile, `*.tmp`, not `*.json`) would be
+  // written as evidence that can never be read back, so the status derived
+  // here would be one set-assertion refuses a second later.
+  if (!isVerdictCandidate(basename)) {
+    throw new CliError(
+      `record-verdict: refused — "${basename}" is not a readable verdict name under verdicts/ (must be *.json, not a dotfile or *.tmp)`,
+      1,
+    )
+  }
+  // The milestone positional binds the file NAME: set-milestone-status done
+  // re-checks hard blockers only in `<m>.json` / `<m>-*.json`
+  // (milestoneVerdictBlockers). A 2a verdict filed as `ESC-<id>.json`
+  // would carry its boundaryViolations past that re-check unseen.
+  if (!verdictBelongsToMilestone(basename, milestone)) {
+    throw new CliError(
+      `record-verdict: refused — "${basename}" is not named for milestone ${milestone}: ` +
+        `use verdicts/${milestone}-<module>[-r<n>].json (a 2a escalation verdict: ${milestone}-ESC-<id>.json), ` +
+        `the name set-milestone-status re-checks for hard blockers`,
+      1,
+    )
+  }
+  const destPath = path.join(prdDirReal, "verdicts", basename)
+  const touchedIds = new Set(Object.keys(extractPerAssertionRecords(raw)))
+  if (existsSync(destPath)) {
+    let existing
+    try {
+      existing = readFileSync(destPath, "utf8")
+    } catch {
+      existing = null
+    }
+    const isReplace = flags.replace === true || flags.replace === "true"
+    if (existing !== null && existing !== rawText && !isReplace) {
+      throw new CliError(
+        `record-verdict: refused — verdicts/${basename} already exists with different content (pass --replace to overwrite)`,
+        1,
+      )
+    }
+    if (existing !== null) {
+      try {
+        // An id the REPLACED file recorded and the new one does not is also
+        // touched: its evidence is being deleted by this very call.
+        for (const id of Object.keys(extractPerAssertionRecords(JSON.parse(existing)))) touchedIds.add(id)
+      } catch {
+        /* unparseable prior file — it decided nothing, so it releases nothing */
+      }
+    }
+  }
+  // Derive through the SAME rule set-assertion uses, over verdicts/ WITH
+  // this file counted in, not from the source document alone: an older or
+  // losing pass must not overwrite a newer fail (the CLI used to write
+  // `passing` for an id its own `set-assertion` refused one line later).
+  const pending = { file: basename, doc: raw, time: parseValidatedAt(raw) ?? Date.now() }
+  const derived = []
+  const updated = { ...(next.assertionStatus ?? {}) }
+  for (const id of touchedIds) {
+    const decision = decideAssertionFromVerdicts(prdDirReal, id, pending)
+    if (decision && decision.status === "pass") {
+      updated[id] = "passing"
+      derived.push(`${id}=passing`)
+    } else if (decision && decision.status === "fail") {
+      updated[id] = "failing"
+      derived.push(`${id}=failing`)
+    } else if (updated[id] === "passing") {
+      // Nothing under verdicts/ still supports the claim on record: an
+      // ambiguous word, a non-unanimous tie, or (on --replace) the id whose
+      // only evidence this very call overwrites. Leaving `passing` would
+      // leave a state set-assertion itself would refuse.
+      updated[id] = "inconclusive"
+      derived.push(`${id}=inconclusive`)
+    }
+  }
+  next.assertionStatus = updated
+  // Byte-for-byte copy of the source (invariant 9: "the exact JSON it
+  // returned, byte-for-byte") — never a re-serialization, which would
+  // silently drop the "verbatim" guarantee the raw-persist step exists for.
+  out.extraFile = { path: destPath, content: rawText }
+  out.message = `record-verdict ${milestone} -> verdicts/${basename}${derived.length ? ` (derived ${derived.join(", ")})` : ""}`
+  return out
+}
+
 /**
  * Build the mutated state (and, for the commands that write a second file,
  * that file's target path + content) for one command. Throws CliError on any
@@ -760,6 +1062,7 @@ function applyCommand(command, named, flags, state, prdDirReal) {
   let message
   let extraFile = null
   let stateChanged = true
+  let exitCode = 0
 
   switch (command) {
     case "set-assertion": {
@@ -865,83 +1168,7 @@ function applyCommand(command, named, flags, state, prdDirReal) {
       // file, silently deleting the evidence backing an already-derived
       // "passing").
       const basename = path.basename(resolvedSrc)
-      // A name the deciding scan skips (dotfile, `*.tmp`, not `*.json`) would be
-      // written as evidence that can never be read back, so the status derived
-      // here would be one set-assertion refuses a second later.
-      if (!isVerdictCandidate(basename)) {
-        throw new CliError(
-          `record-verdict: refused — "${basename}" is not a readable verdict name under verdicts/ (must be *.json, not a dotfile or *.tmp)`,
-          1,
-        )
-      }
-      // The milestone positional binds the file NAME: set-milestone-status done
-      // re-checks hard blockers only in `<m>.json` / `<m>-*.json`
-      // (milestoneVerdictBlockers). A 2a verdict filed as `ESC-<id>.json`
-      // would carry its boundaryViolations past that re-check unseen.
-      if (!verdictBelongsToMilestone(basename, milestone)) {
-        throw new CliError(
-          `record-verdict: refused — "${basename}" is not named for milestone ${milestone}: ` +
-            `use verdicts/${milestone}-<module>[-r<n>].json (a 2a escalation verdict: ${milestone}-ESC-<id>.json), ` +
-            `the name set-milestone-status re-checks for hard blockers`,
-          1,
-        )
-      }
-      const destPath = path.join(prdDirReal, "verdicts", basename)
-      const touchedIds = new Set(Object.keys(extractPerAssertionRecords(raw)))
-      if (existsSync(destPath)) {
-        let existing
-        try {
-          existing = readFileSync(destPath, "utf8")
-        } catch {
-          existing = null
-        }
-        const isReplace = flags.replace === true || flags.replace === "true"
-        if (existing !== null && existing !== rawText && !isReplace) {
-          throw new CliError(
-            `record-verdict: refused — verdicts/${basename} already exists with different content (pass --replace to overwrite)`,
-            1,
-          )
-        }
-        if (existing !== null) {
-          try {
-            // An id the REPLACED file recorded and the new one does not is also
-            // touched: its evidence is being deleted by this very call.
-            for (const id of Object.keys(extractPerAssertionRecords(JSON.parse(existing)))) touchedIds.add(id)
-          } catch {
-            /* unparseable prior file — it decided nothing, so it releases nothing */
-          }
-        }
-      }
-      // Derive through the SAME rule set-assertion uses, over verdicts/ WITH
-      // this file counted in, not from the source document alone: an older or
-      // losing pass must not overwrite a newer fail (the CLI used to write
-      // `passing` for an id its own `set-assertion` refused one line later).
-      const pending = { file: basename, doc: raw, time: parseValidatedAt(raw) ?? Date.now() }
-      const derived = []
-      const updated = { ...(next.assertionStatus ?? {}) }
-      for (const id of touchedIds) {
-        const decision = decideAssertionFromVerdicts(prdDirReal, id, pending)
-        if (decision && decision.status === "pass") {
-          updated[id] = "passing"
-          derived.push(`${id}=passing`)
-        } else if (decision && decision.status === "fail") {
-          updated[id] = "failing"
-          derived.push(`${id}=failing`)
-        } else if (updated[id] === "passing") {
-          // Nothing under verdicts/ still supports the claim on record: an
-          // ambiguous word, a non-unanimous tie, or (on --replace) the id whose
-          // only evidence this very call overwrites. Leaving `passing` would
-          // leave a state set-assertion itself would refuse.
-          updated[id] = "inconclusive"
-          derived.push(`${id}=inconclusive`)
-        }
-      }
-      next.assertionStatus = updated
-      // Byte-for-byte copy of the source (invariant 9: "the exact JSON it
-      // returned, byte-for-byte") — never a re-serialization, which would
-      // silently drop the "verbatim" guarantee the raw-persist step exists for.
-      extraFile = { path: destPath, content: rawText }
-      message = `record-verdict ${milestone} -> verdicts/${basename}${derived.length ? ` (derived ${derived.join(", ")})` : ""}`
+      ;({ extraFile, message } = recordVerdictText(next, flags, prdDirReal, milestone, basename, rawText, raw))
       break
     }
 
@@ -966,6 +1193,10 @@ function applyCommand(command, named, flags, state, prdDirReal) {
       // Anything the PRIOR gate held outside that flat schema — a
       // milestone-keyed record set, or a prior flat record — is folded into
       // `.history` rather than dropped (see foldGateHistory).
+      // `ts` defaults to NOW: an agent cannot know the time, and typed guesses
+      // have run ahead of real UTC. A given ts must parse.
+      if (payload.ts === undefined) payload.ts = new Date().toISOString()
+      else assertIsoTs(payload.ts, `set-gate ${type}`)
       if (type === "integration") {
         if (typeof payload.passed !== "boolean") {
           throw new CliError('set-gate integration: <json> needs a boolean "passed" (rehydrationPlan reads it)', 1)
@@ -1014,6 +1245,11 @@ function applyCommand(command, named, flags, state, prdDirReal) {
         throw new CliError(`merge-meta: refused — "${handoffPath}" must resolve under prd-dir/handoffs/`, 1)
       }
       const handoff = readJsonFile(resolved, "merge-meta")
+      // Workers cannot know the time: an omitted ts is stamped now, unless the
+      // handoff already carries one (a later merge never moves the first stamp).
+      if (payload.ts === undefined) {
+        if (typeof handoff._meta?.ts !== "string") payload.ts = new Date().toISOString()
+      } else assertIsoTs(payload.ts, "merge-meta")
       const mergedMeta = { ...(handoff._meta ?? {}), ...payload }
       const mergedHandoff = { ...handoff, _meta: mergedMeta }
       const metaFindings = checkHandoffMeta(mergedHandoff)
@@ -1123,171 +1359,7 @@ function applyCommand(command, named, flags, state, prdDirReal) {
       if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
         throw new CliError("upsert-escalation: <json> must be a JSON object", 2)
       }
-      if ("id" in payload && payload.id !== id) {
-        throw new CliError(`upsert-escalation: payload.id "${payload.id}" does not match positional id "${id}"`, 1)
-      }
-      // Closed vocabularies: bookkeeping check 4b keys on status done|in-progress,
-      // and the 2a validator on the exact escalation-worker marker, so a typo
-      // ("complete", "escalation-wroker") would silently switch both off.
-      const enumFields = [
-        ["status", ESCALATION_STATUSES],
-        ["route", ESCALATION_ROUTES],
-        ["implementedBy", ESCALATION_IMPLEMENTERS],
-      ]
-      for (const [field, allowed] of enumFields) {
-        if (payload[field] !== undefined && !allowed.includes(payload[field])) {
-          throw new CliError(
-            `upsert-escalation: ${field} ${JSON.stringify(payload[field])} is not one of ${allowed.join("|")}`,
-            1,
-          )
-        }
-      }
-      if (payload.milestone !== undefined) assertKnownMilestone(next, payload.milestone, "upsert-escalation")
-      // `feature`: the orchestrator-owned (isEscalation) feature this escalation
-      // implements, which is how the rehydration brief counts that feature built.
-      if (payload.feature !== undefined && (typeof payload.feature !== "string" || payload.feature.length === 0)) {
-        throw new CliError("upsert-escalation: feature must be the non-empty id of the feature this escalation implements", 1)
-      }
-      if (
-        payload.workerPathGlobs !== undefined &&
-        (!Array.isArray(payload.workerPathGlobs) || !payload.workerPathGlobs.every((g) => typeof g === "string" && g.length > 0))
-      ) {
-        throw new CliError("upsert-escalation: workerPathGlobs must be an array of non-empty strings (routeEscalation's grant)", 1)
-      }
-      if (payload.files !== undefined) {
-        if (!Array.isArray(payload.files) || !payload.files.every((f) => typeof f === "string")) {
-          throw new CliError("upsert-escalation: files must be an array of strings", 1)
-        }
-        const trailing = payload.files.filter((f) => f.endsWith("/"))
-        if (trailing.length) {
-          throw new CliError(`upsert-escalation: files[] entries must not have a trailing slash: ${trailing.join(", ")}`, 1)
-        }
-      }
-      if (payload.verifiedBy !== undefined) {
-        if (!Array.isArray(payload.verifiedBy)) throw new CliError("upsert-escalation: verifiedBy must be an array", 1)
-        payload.verifiedBy.forEach((v, i) => {
-          if (!v || typeof v !== "object") throw new CliError(`upsert-escalation: verifiedBy[${i}] must be an object`, 1)
-          if (typeof v.command !== "string") throw new CliError(`upsert-escalation: verifiedBy[${i}].command must be a string`, 1)
-          if (typeof v.exit !== "number") throw new CliError(`upsert-escalation: verifiedBy[${i}].exit must be a number`, 1)
-          if (typeof v.evidence !== "string") throw new CliError(`upsert-escalation: verifiedBy[${i}].evidence must be a string`, 1)
-          if (typeof v.readOnly !== "boolean") throw new CliError(`upsert-escalation: verifiedBy[${i}].readOnly must be a boolean`, 1)
-          if (v.amends !== undefined && (typeof v.amends !== "string" || v.amends.length === 0)) {
-            throw new CliError(`upsert-escalation: verifiedBy[${i}].amends must be the non-empty command it replaces`, 1)
-          }
-          // mission-validate 2b RE-RUNS these at the boundary, so the list may
-          // hold nothing but commands that pass and change nothing: an exit 1
-          // advances a milestone carrying a red proof, and a mutating one has a
-          // validator editing tracked files to "verify".
-          if (v.exit !== 0) {
-            throw new CliError(
-              `upsert-escalation: verifiedBy[${i}].exit must be 0 — a re-runnable proof; record a red or ` +
-                `non-vacuity run under nonVacuityProofs[] ({method, result, at}) instead`,
-              1,
-            )
-          }
-          if (v.readOnly !== true) {
-            throw new CliError(
-              `upsert-escalation: verifiedBy[${i}].readOnly must be true — a validator re-runs this command; ` +
-                `record a mutating run (plant-and-restore, ablation) under nonVacuityProofs[] ({method, result, at}) instead`,
-              1,
-            )
-          }
-        })
-      }
-      if (payload.nonVacuityProofs !== undefined) {
-        if (!Array.isArray(payload.nonVacuityProofs)) {
-          throw new CliError("upsert-escalation: nonVacuityProofs must be an array", 1)
-        }
-        payload.nonVacuityProofs.forEach((p, i) => {
-          if (!p || typeof p !== "object" || Array.isArray(p)) {
-            throw new CliError(`upsert-escalation: nonVacuityProofs[${i}] must be an object`, 1)
-          }
-          for (const field of ["method", "result"]) {
-            if (typeof p[field] !== "string" || p[field].trim().length === 0) {
-              throw new CliError(`upsert-escalation: nonVacuityProofs[${i}].${field} must be a non-empty string`, 1)
-            }
-          }
-          if (typeof p.at !== "string" || !Number.isFinite(Date.parse(p.at))) {
-            throw new CliError(`upsert-escalation: nonVacuityProofs[${i}].at must be a parseable date string`, 1)
-          }
-          if ("command" in p || "exit" in p) {
-            throw new CliError(
-              `upsert-escalation: nonVacuityProofs[${i}] must not carry command/exit — it is a RECORD of a run, ` +
-                `not something a validator re-runs (that is verifiedBy)`,
-              1,
-            )
-          }
-        })
-      }
-      const escalations = Array.isArray(next.escalations) ? [...next.escalations] : []
-      const idx = escalations.findIndex((e) => e && e.id === id)
-      // CREATE needs the record's identity. No verb removes an escalation and
-      // D2 forbids hand edits, so a mistyped id with a partial payload (say only
-      // nonVacuityProofs) would otherwise become a permanent orphan that the
-      // brief lists as open for the rest of the mission. A MERGE into an
-      // existing record keeps accepting a partial payload.
-      if (idx === -1) {
-        const missing = []
-        if (payload.milestone === undefined) missing.push("milestone (a known milestone id)")
-        if (typeof payload.reason !== "string" || payload.reason.trim().length === 0) missing.push("reason (non-empty string)")
-        if (!Array.isArray(payload.files) || payload.files.length === 0 || !payload.files.every((f) => typeof f === "string" && f.length > 0)) {
-          missing.push("files (non-empty array of repo-relative paths)")
-        }
-        if (payload.status === undefined) missing.push(`status (${ESCALATION_STATUSES.join("|")})`)
-        if (missing.length) {
-          throw new CliError(
-            `upsert-escalation: refused — "${id}" is not a recorded escalation, and creating one needs ${missing.join(", ")}. ` +
-              `If you meant an existing escalation, check the id (escalations: ${
-                escalations.map((e) => e?.id).filter(Boolean).join(", ") || "none"
-              })`,
-            1,
-          )
-        }
-      }
-      const prior = idx >= 0 ? escalations[idx] : {}
-      const merged = idx >= 0 ? { ...prior, ...payload, id } : { id, ...payload }
-      // Proof lists MERGE, never replace: a call that records one more proof
-      // keeps every earlier one (the 2b gate re-runs the whole list, and a red
-      // proof is AMENDED, never deleted). verifiedBy entries key on `command`
-      // (legacy `cmd`); a new entry carrying `amends: "<old command>"` replaces
-      // exactly that entry, which is how a proof is pinned or narrowed when its
-      // command string changes. nonVacuityProofs entries key on `method`.
-      if (payload.verifiedBy !== undefined) {
-        let list = Array.isArray(prior.verifiedBy) ? [...prior.verifiedBy] : []
-        for (const [i, v] of payload.verifiedBy.entries()) {
-          if (v.amends !== undefined) {
-            const at = list.findIndex((e) => proofCommandOf(e) === v.amends)
-            if (at === -1) {
-              throw new CliError(
-                `upsert-escalation: verifiedBy[${i}].amends "${v.amends}" names no stored verifiedBy command of ${id}`,
-                1,
-              )
-            }
-            list[at] = v
-            list = list.filter((e, j) => j === at || proofCommandOf(e) !== v.command)
-          } else {
-            list = mergeProofList(list, [v], proofCommandOf)
-          }
-        }
-        merged.verifiedBy = list
-      }
-      if (payload.nonVacuityProofs !== undefined) {
-        merged.nonVacuityProofs = mergeProofList(prior.nonVacuityProofs, payload.nonVacuityProofs, (p) => p?.method)
-      }
-      if (
-        (merged.route === "inline" && merged.implementedBy === ESCALATION_WORKER_MARKER) ||
-        (merged.route === "delegate" && merged.implementedBy === ORCHESTRATOR_INLINE_MARKER)
-      ) {
-        throw new CliError(
-          `upsert-escalation: route "${merged.route}" contradicts implementedBy "${merged.implementedBy}" ` +
-            `(inline ⇒ orchestrator-inline, delegate ⇒ escalation-worker)`,
-          1,
-        )
-      }
-      if (idx >= 0) escalations[idx] = merged
-      else escalations.push(merged)
-      next.escalations = escalations
-      message = `upsert-escalation ${id} (${idx >= 0 ? "merged" : "added"}; escalations: ${escalations.length})`
+      message = applyUpsertEscalation(next, id, payload).message
       break
     }
 
@@ -1441,7 +1513,7 @@ function applyCommand(command, named, flags, state, prdDirReal) {
         throw new CliError(
           `set-field: "${fieldPath}" is not on the allowlist (queueSubstrate, scopeOverride, simplifyPasses.<m>, ` +
             `milestoneReviews.<m>, budget.byMilestone.<m>, models.<${MODEL_SEATS.join("|")}>, missionFinalReview, ` +
-            `currentMilestone, activeWorker, planReview, haltEvidence)`,
+            `currentMilestone, activeWorker, planReview, haltEvidence, autopilot, autopilot.<${AUTOPILOT_SUBFIELDS.join("|")}>)`,
           2,
         )
       }
@@ -1459,6 +1531,17 @@ function applyCommand(command, named, flags, state, prdDirReal) {
         throw new CliError("set-field: budget.byMilestone.<m> must be a number", 1)
       }
       assertSetFieldValueShape(fieldPath, value)
+      // autopilot (docs/protocol.md § Autopilot): the whole record, or one sub-field
+      // of an EXISTING record; either way the resulting record must validate, so
+      // a half-written approval can never read as human consent.
+      if (fieldPath === "autopilot" || shape.kind === "autopilot-sub") {
+        if (shape.kind === "autopilot-sub" && !isPlainObject(next.autopilot)) {
+          throw new CliError(`set-field: ${fieldPath} needs an existing autopilot record (set-field autopilot '<json>' first)`, 1)
+        }
+        const candidate = fieldPath === "autopilot" ? value : { ...next.autopilot, [fieldPath.split(".")[1]]: value }
+        const problems = autopilotProblems(candidate)
+        if (problems.length) throw new CliError(`set-field: autopilot refused: ${problems.join("; ")}`, 1)
+      }
       if (fieldPath === "currentMilestone" && value !== null) {
         if (typeof value !== "string") throw new CliError("set-field: currentMilestone must be a string milestone id or null", 1)
         assertKnownMilestone(next, value, "set-field")
@@ -1608,11 +1691,346 @@ function applyCommand(command, named, flags, state, prdDirReal) {
       break
     }
 
+    // ── autopilot / evidence verbs (docs/protocol.md § Autopilot) ──
+    // Each is a composition of existing verbs in ONE locked, validated write,
+    // replacing the throwaway scripts that chained several CLI calls.
+
+    // The dispatch half: route the scoped file list (the config's protected
+    // paths, test globs and additive pairs), record the escalation in-progress
+    // with routeEscalation's workerPathGlobs, and for a delegate set
+    // activeWorker, all in one write.
+    case "dispatch-esc": {
+      const { id } = named
+      let files
+      try {
+        files = parseFileList(flags.files)
+      } catch (e) {
+        throw new CliError(`dispatch-esc: ${e.message}`, 2)
+      }
+      const existing = (Array.isArray(next.escalations) ? next.escalations : []).find((e) => e && e.id === id)
+      if (existing && ["done", "verified"].includes(existing.status)) {
+        throw new CliError(`dispatch-esc: refused — ${id} is already ${existing.status}; a finished escalation is never re-dispatched`, 1)
+      }
+      const additiveOnly = flags.additive === true || flags.additive === "true"
+      const route = routeEscalation({ files, additiveOnly }, ESCALATION_CONFIG)
+      const payload = {
+        files,
+        route: route.route,
+        implementedBy: route.route === "delegate" ? ESCALATION_WORKER_MARKER : ORCHESTRATOR_INLINE_MARKER,
+        status: "in-progress",
+      }
+      if (route.route === "delegate") {
+        payload.workerPathGlobs = route.workerPathGlobs
+        // Invariant 12, enforced: escalations are serial, so a delegate is
+        // never dispatched while another delegate is still in progress.
+        const conflict = serialDispatchConflict(next.escalations, id)
+        if (conflict) throw new CliError(`dispatch-esc: refused — ${id}: ${conflict}`, 1)
+      }
+      if (typeof flags.feature === "string") payload.feature = flags.feature
+      if (typeof flags.reason === "string") payload.reason = flags.reason
+      if (typeof flags.milestone === "string") payload.milestone = flags.milestone
+      else if (!existing && typeof next.currentMilestone === "string") payload.milestone = next.currentMilestone
+      applyUpsertEscalation(next, id, payload)
+      if (route.route === "delegate") {
+        next.activeWorker = { feature: `ESC-${id}`, lane: typeof flags.lane === "string" ? flags.lane : null, at: new Date().toISOString() }
+      }
+      message =
+        `dispatch-esc ${id} route=${route.route}` +
+        (route.route === "delegate"
+          ? ` activeWorker=${next.activeWorker.feature} workerPathGlobs=${JSON.stringify(route.workerPathGlobs)}`
+          : " (apply it inline with the verification discipline)")
+      break
+    }
+
+    // The return half: merge-meta the escalation-worker's handoff (the
+    // deterministic proof it was written), record done + verifiedBy, and drop
+    // this escalation from activeWorker — one write for the state, one for the
+    // handoff (handoff first, invariant 9's order).
+    case "close-esc": {
+      const { id } = named
+      const escalations = Array.isArray(next.escalations) ? next.escalations : []
+      const rec = escalations.find((e) => e && e.id === id)
+      if (!rec) throw new CliError(`close-esc: refused — "${id}" is not a recorded escalation (dispatch-esc it first)`, 1)
+      if (["done", "verified"].includes(rec.status)) {
+        throw new CliError(`close-esc: refused — ${id} is already ${rec.status}; add or amend proofs with upsert-escalation`, 1)
+      }
+      let entries
+      try {
+        const parsed = JSON.parse(flags.verified)
+        if (!Array.isArray(parsed)) throw new TypeError("--verified must be a JSON array")
+        entries = parsed.map((v, i) => expandVerifiedEntry(v, i))
+      } catch (e) {
+        throw new CliError(`close-esc: ${e instanceof SyntaxError ? "--verified is not valid JSON" : e.message}`, 2)
+      }
+      const hasStored = Array.isArray(rec.verifiedBy) && rec.verifiedBy.length > 0
+      if (entries.length === 0 && !hasStored) {
+        throw new CliError(`close-esc: refused — ${id} has no verifiedBy; an escalation with no proof is unverified and blocks the gate`, 1)
+      }
+      if (rec.route === "delegate" || rec.implementedBy === ESCALATION_WORKER_MARKER) {
+        const rel = `handoffs/ESC-${id}.json`
+        const handoffPath = resolveConfined(prdDirReal, rel, "close-esc")
+        if (!existsSync(handoffPath)) {
+          throw new CliError(`close-esc: refused — ${rel} does not exist: the worker's handoffWritten claim is false (treat as a failed handoff)`, 1)
+        }
+        const handoff = readJsonFile(handoffPath, "close-esc")
+        const prior = handoff._meta && typeof handoff._meta === "object" ? handoff._meta : {}
+        const meta = { ...prior }
+        if (flags.tokens !== undefined) {
+          const n = Number(flags.tokens)
+          if (!Number.isFinite(n) || n < 0) throw new CliError("close-esc: --tokens must be a non-negative number", 1)
+          meta.tokensSpent = n
+        } else if (typeof prior.tokensSpent !== "number") {
+          throw new CliError("close-esc: --tokens <n> is required (the spawn's measured output tokens; the handoff has no _meta yet)", 2)
+        }
+        meta.attribution = typeof flags.attribution === "string" ? flags.attribution : (prior.attribution ?? "exact")
+        if (typeof flags.ts === "string") assertIsoTs(flags.ts, "close-esc --ts")
+        meta.ts = typeof flags.ts === "string" ? flags.ts : new Date().toISOString()
+        const merged = { ...handoff, _meta: meta }
+        const metaFindings = checkHandoffMeta(merged)
+        if (metaFindings.some((f) => f.severity === "error")) {
+          throw new CliError(`close-esc: refused — merged _meta fails checkHandoffMeta: ${metaFindings.map((f) => f.code).join(", ")}`, 1)
+        }
+        extraFile = { path: handoffPath, content: JSON.stringify(merged, null, 2) + "\n" }
+      }
+      applyUpsertEscalation(next, id, entries.length ? { status: "done", verifiedBy: entries } : { status: "done" })
+      next.activeWorker = activeWorkerWithout(next.activeWorker, `ESC-${id}`)
+      message = `close-esc ${id} -> done (verifiedBy +${entries.length}${extraFile ? "; handoff _meta merged" : "; inline, no handoff"})`
+      break
+    }
+
+    // The validate phase's verifiedBy re-run, as a verb. The commands ran BEFORE the lock
+    // (runCLI passes their results in); this only records them, when --record.
+    case "rerun-verified": {
+      const { milestone, __results: results, __logDir: logDir, __signature: ranSignature } = named
+      assertKnownMilestone(next, milestone, "rerun-verified")
+      // The commands ran on an unlocked snapshot. If a proof was amended or an
+      // escalation added while they ran, these results describe a set that no
+      // longer exists: refuse to record them (re-run).
+      if (proofSignature(milestoneEscalationProofs(next, milestone)) !== ranSignature) {
+        throw new CliError(
+          `rerun-verified: refused — ${milestone}'s proof set changed while the commands ran (an amend or a new escalation); nothing recorded, re-run it`,
+          1,
+        )
+      }
+      const red = results.filter((r) => !r.ok)
+      const record = {
+        milestone,
+        ts: new Date().toISOString(),
+        passed: red.length === 0,
+        logDir,
+        results: results.map(({ id, command, exit, reason, log }) => ({ id, command, exit, ...(reason ? { reason } : {}), ...(log ? { log } : {}) })),
+      }
+      const isRecord = flags.record === true || flags.record === "true"
+      if (isRecord) {
+        const notes = isPlainObject(next.boundaryNotes) ? { ...next.boundaryNotes } : {}
+        notes[`rerunVerified-${milestone}`] = record // a fresh measurement replaces the last one
+        next.boundaryNotes = notes
+      } else {
+        stateChanged = false
+      }
+      const summary = `rerun-verified ${milestone}: ${results.length - red.length}/${results.length} green` +
+        (red.length ? `; RED: ${red.map((r) => `${r.id}${r.reason ? ` (${r.reason})` : ` exit=${r.exit} log=${r.log}`}`).join(", ")}` : "") +
+        (isRecord ? ` (recorded boundaryNotes.rerunVerified-${milestone})` : "")
+      message = summary
+      if (red.length) exitCode = 1
+      break
+    }
+
+    // The test-hardening disposition: a terminal record for every testGap the
+    // milestone's verdict files carry (CLOSED for --closed ids, else --default),
+    // plus a followUps[] line for each ACCEPTED one. Idempotent.
+    case "record-testgaps-from-verdicts": {
+      const { milestone } = named
+      assertKnownMilestone(next, milestone, "record-testgaps-from-verdicts")
+      const fallback = flags.default
+      if (!(fallback === "ACCEPTED" || /^DEFERRED-TO-[A-Za-z0-9_-]+$/.test(fallback))) {
+        throw new CliError("record-testgaps-from-verdicts: --default must be ACCEPTED or DEFERRED-TO-<milestone>", 1)
+      }
+      if (fallback.startsWith("DEFERRED-TO-")) assertKnownMilestone(next, fallback.slice("DEFERRED-TO-".length), "record-testgaps-from-verdicts")
+      let closed = new Set()
+      if (typeof flags.closed === "string") {
+        try {
+          closed = new Set(parseFileList(flags.closed))
+        } catch {
+          throw new CliError("record-testgaps-from-verdicts: --closed must be a JSON array or comma list of gap ids", 2)
+        }
+      }
+      const dir = path.join(prdDirReal, "verdicts")
+      const verdicts = []
+      if (existsSync(dir)) {
+        // Only the highest round of each group (`M1-web`, `M1-web-r1`, …) counts:
+        // a superseded round's gaps were re-checked by the newer one, and a
+        // gap the hardening round fixed is no longer reported there.
+        const latest = new Map()
+        for (const f of readdirSync(dir).sort()) {
+          if (!isVerdictCandidate(f) || !verdictBelongsToMilestone(f, milestone)) continue
+          const { base, round } = verdictStem(f)
+          const prev = latest.get(base)
+          if (!prev || round > prev.round) latest.set(base, { file: f, round })
+        }
+        for (const { file: f } of [...latest.values()].sort((a, b) => a.file.localeCompare(b.file))) {
+          try {
+            verdicts.push({ file: f, doc: JSON.parse(readFileSync(path.join(dir, f), "utf8")) })
+          } catch {
+            /* unparseable verdict: it records no gaps */
+          }
+        }
+      }
+      const records = planTestGapRecords(verdicts, next.testGaps, { closed, fallback })
+      const reason = typeof flags.reason === "string" && flags.reason.trim() ? flags.reason.trim() : "not closable in-harness; post-mission triage re-checks it"
+      next.testGaps = [...existingList(next, "testGaps", "record-testgaps-from-verdicts"), ...records]
+      const fu = existingList(next, "followUps", "record-testgaps-from-verdicts")
+      const lines = records
+        .filter((r) => r.resolution === "ACCEPTED")
+        .map((r) => `[test-gap, low] ${milestone} testGap ${r.id} (${r.kind}) ACCEPTED: ${reason}: ${r.detail.slice(0, 160)}`)
+      const { added } = newFollowUpLines(lines.join("\n"), fu)
+      next.followUps = [...fu, ...added]
+      const by = (res) => records.filter((r) => r.resolution === res).length
+      message =
+        `record-testgaps-from-verdicts ${milestone}: ${records.length} terminal record(s) ` +
+        `(CLOSED ${by("CLOSED")}, ${fallback} ${by(fallback)}; followUps +${added.length}) from ${verdicts.length} verdict file(s)`
+      break
+    }
+
+    // Idempotent bulk followUps[]: one per non-blank line, skipping any line
+    // already recorded. The input file is READ only (it may live anywhere,
+    // e.g. the scratchpad); `-` reads stdin.
+    case "append-followups": {
+      const { file } = named
+      let text
+      try {
+        text = file === "-" ? readFileSync(0, "utf8") : readFileSync(path.resolve(prdDirReal, file), "utf8")
+      } catch {
+        throw new CliError(`append-followups: cannot read ${file}`, 2)
+      }
+      const fu = existingList(next, "followUps", "append-followups")
+      const { added, skipped } = newFollowUpLines(text, fu)
+      next.followUps = [...fu, ...added]
+      if (added.length === 0) stateChanged = false
+      message = `append-followups (added ${added.length}, skipped ${skipped} already present; followUps: ${next.followUps.length})`
+      break
+    }
+
+    // Byte-for-byte verdict capture: the validator's returned JSON is taken
+    // from its own transcript (never retyped), written to verdicts/<--as> and
+    // derived exactly as record-verdict does. `--transcript <file>` names the
+    // file; `--agent <id> --transcripts <dir>` finds `agent-<id>.jsonl` there.
+    case "capture-verdict": {
+      const { milestone } = named
+      assertKnownMilestone(next, milestone, "capture-verdict")
+      const basename = String(flags.as)
+      if (basename !== path.basename(basename)) throw new CliError("capture-verdict: --as is a file NAME under verdicts/, not a path", 1)
+      const direct = typeof flags.transcript === "string"
+      if (direct === (typeof flags.agent === "string")) {
+        throw new CliError("capture-verdict: pass exactly one of --transcript <file> or --agent <id> --transcripts <dir>", 2)
+      }
+      let transcript
+      let source
+      if (direct) {
+        transcript = path.resolve(flags.transcript)
+        source = path.basename(transcript)
+      } else {
+        let agentId
+        try {
+          agentId = normalizeAgentId(flags.agent)
+        } catch (e) {
+          throw new CliError(`capture-verdict: ${e.message}`, 2)
+        }
+        if (typeof flags.transcripts !== "string") throw new CliError("capture-verdict: --agent needs --transcripts <dir> (the runtime's transcript directory)", 2)
+        try {
+          transcript = findTranscript(path.resolve(flags.transcripts), agentId)
+        } catch (e) {
+          throw new CliError(`capture-verdict: ${e.message}`, 1)
+        }
+        source = `agent-${agentId}`
+      }
+      let text
+      try {
+        text = readFileSync(transcript, "utf8")
+      } catch {
+        throw new CliError(`capture-verdict: cannot read ${transcript}`, 1)
+      }
+      const rawText = extractVerdictFromTranscript(text)
+      if (rawText === null) {
+        throw new CliError(
+          `capture-verdict: refused — no verdict JSON (an object with verdicts[] and area/validatedAt) in ${transcript}; ` +
+            `the validator did not return one, so its area is failing`,
+          1,
+        )
+      }
+      const doc = JSON.parse(rawText)
+      const expected = verdictModuleOf(basename, milestone)
+      const own = typeof doc.area === "string" ? doc.area : doc.module
+      if (typeof own !== "string" || own !== expected) {
+        throw new CliError(
+          `capture-verdict: refused — the verdict's area is ${JSON.stringify(own ?? null)} but --as ${basename} names ` +
+            `${JSON.stringify(expected)}; file each validator's return under its own area`,
+          1,
+        )
+      }
+      ;({ extraFile, message } = recordVerdictText(next, flags, prdDirReal, milestone, basename, rawText, doc))
+      message = message.replace(/^record-verdict/, "capture-verdict") + ` (from ${source}, ${rawText.length} bytes)`
+      break
+    }
+
     default:
       throw new CliError(`unknown command "${command}"`, 2)
   }
 
-  return { next, message, extraFile, stateChanged }
+  return { next, message, extraFile, stateChanged, exitCode }
+}
+
+/**
+ * rerun-verified's execution half, outside the lock: read the state, collect
+ * the milestone's escalation proofs, run each with `sh -c` in the repo root
+ * (`--root`, which must be the git toplevel holding the mission dir; default:
+ * its own toplevel), output to one log per command. Only ADMISSIBLE entries
+ * run (readOnly true AND exit 0, `isAdmissibleProof`); a legacy or
+ * hand-edited entry is reported red as "not admissible" and never executed.
+ * Nothing sandboxes an admissible command: its safety rests on the readOnly
+ * claim upsert-escalation / close-esc required when it was recorded.
+ */
+function preRunVerified(prdDir, milestone, flags) {
+  let state
+  try {
+    state = JSON.parse(readFileSync(path.join(prdDir, "mission-state.json"), "utf8"))
+  } catch {
+    throw new CliError("rerun-verified: mission-state.json is not valid JSON", 2)
+  }
+  assertKnownMilestone(state, milestone, "rerun-verified")
+  const toplevel = (dir) => {
+    try {
+      return realpathSync(execFileSync("git", ["-C", dir, "rev-parse", "--show-toplevel"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim())
+    } catch {
+      return null
+    }
+  }
+  const prdRoot = toplevel(prdDir)
+  let root = prdRoot
+  if (typeof flags.root === "string") {
+    root = toplevel(flags.root)
+    if (!root || root !== realpathSync(flags.root)) throw new CliError(`rerun-verified: --root ${flags.root} is not a git worktree root`, 2)
+    if (prdRoot && root !== prdRoot) throw new CliError(`rerun-verified: --root ${root} does not hold the prd-dir (its root is ${prdRoot})`, 1)
+  }
+  if (!root) throw new CliError("rerun-verified: the prd-dir is not inside a git worktree; pass --root", 2)
+  // Logs go to a FRESH directory (mkdtemp) under the OS temp dir or /tmp,
+  // never into the repository: `--log-dir` names
+  // the parent, and is refused anywhere else.
+  let parent = tmpdir()
+  if (typeof flags["log-dir"] === "string") {
+    try {
+      parent = confineToTempRoots(flags["log-dir"])
+    } catch (e) {
+      throw new CliError(`rerun-verified: --log-dir ${e.message}`, 1)
+    }
+  }
+  mkdirSync(parent, { recursive: true })
+  const logDir = mkdtempSync(path.join(parent, `rerun-verified-${milestone}-`))
+  const minutes = flags["timeout-min"] !== undefined ? Number(flags["timeout-min"]) : 15
+  if (!Number.isFinite(minutes) || minutes <= 0) throw new CliError("rerun-verified: --timeout-min must be a positive number", 2)
+  const proofs = milestoneEscalationProofs(state, milestone)
+  const results = runProofs(proofs, { cwd: root, logDir, timeoutMs: minutes * 60_000 })
+  return { __results: results, __logDir: logDir, __signature: proofSignature(proofs) }
 }
 
 function listHandoffFiles(prdDirReal) {
@@ -1634,6 +2052,7 @@ function listHandoffFiles(prdDirReal) {
 export function runCLI(argv, opts = {}) {
   let lockPath = null
   NEW_FEATURE_SURFACES = Array.isArray(opts.surfaces) && opts.surfaces.length ? opts.surfaces : DEFAULT_SURFACES
+  ESCALATION_CONFIG = opts.escalation !== null && typeof opts.escalation === "object" ? opts.escalation : {}
   try {
     const [prdDirArg, command, ...rest] = argv
     if (!prdDirArg || !existsSync(prdDirArg)) {
@@ -1652,6 +2071,11 @@ export function runCLI(argv, opts = {}) {
     const { positional, flags } = parseArgs(rest, COMMAND_SPECS[command].flags)
     const named = validateArgShape(command, positional, flags)
 
+    // rerun-verified runs the recorded read-only proofs (minutes, for a test
+    // suite) BEFORE the lock, so no other CLI call times out behind it; only
+    // the recording of their results happens inside the locked write.
+    if (command === "rerun-verified") Object.assign(named, preRunVerified(prdDir, named.milestone, flags))
+
     lockPath = acquireLock(prdDir)
 
     const beforeRaw = readFileSync(statePath, "utf8")
@@ -1666,7 +2090,7 @@ export function runCLI(argv, opts = {}) {
       throw new CliError("mission-state.json is not a JSON object", 2)
     }
 
-    const { next, message, extraFile, stateChanged } = applyCommand(command, named, flags, before, prdDir)
+    const { next, message, extraFile, stateChanged, exitCode } = applyCommand(command, named, flags, before, prdDir)
 
     const handoffFiles = listHandoffFiles(prdDir)
     const findingsBefore = checkBookkeeping(before, { handoffFiles, surfaces: NEW_FEATURE_SURFACES })
@@ -1697,6 +2121,7 @@ export function runCLI(argv, opts = {}) {
     if (extraFile) writeAtomic(extraFile.path, extraFile.content)
     if (stateChanged) writeAtomic(statePath, JSON.stringify(next, null, 2) + "\n")
 
+    if (exitCode) return { exitCode, stdout: "", stderr: `${message}\n` }
     return { exitCode: 0, stdout: `OK ${message}\n`, stderr: "" }
   } catch (e) {
     if (e instanceof CliError) return { exitCode: e.exitCode, stdout: "", stderr: `${e.message}\n` }

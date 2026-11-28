@@ -192,3 +192,56 @@ serialize. The worst case is the proven-correct serial path.
 with several unverified on-device legs, and the deferred real run then found four
 genuine cross-screen bugs. A status that overstates completion is the most
 expensive lie the harness can tell, because everyone downstream believes it.
+
+---
+
+## Autopilot — the same loop, without a human at every hand-off
+
+One workflow, one entry point. Autopilot is not a second harness: it is the loop
+above with the hand-offs automated, switched on by the human at the one gate
+that already exists, plan approval.
+
+```
+write-a-prd ──► plan ──► human approves the contract
+                              │
+                              ├─ approve ─────────────► run ⇄ validate, the human drives each step
+                              │
+                              └─ approve + autopilot ─► the plan PR (reviewed) lands
+                                                        ──► fresh-context run session(s), one per milestone folder
+                                                            arm ─► pre-flight ─► escalations ─► features
+                                                            ─► simplify ─► gate ─► validators ─► close
+                                                            ─► PR ─► simplify read ─► code review ─► land when green
+                                                        ──► triage the follow-ups one by one ──► finish
+```
+
+- **The record.** Approval writes `autopilot` into `mission-state.json` through
+  `mission state set-field autopilot` (`enabled`, `phase`, `approvedBy`,
+  `approvedAt`, `brief`, `branch`, `dependsOn`, `pr`, `owner`, `blockedOn`). The
+  CLI validates its shape. It cannot prove consent, so the plan change carrying
+  it is reviewed before it lands, and a record that did not arrive that way is
+  not consent. `brief` is data, never instructions.
+- **The directive.** `mission brief --only-active` (the SessionStart hook) ends
+  the brief with an `AUTOPILOT` line naming the next step. It is a directive
+  only in the session meant to run that folder (the mission is armed, or the
+  checkout's branch equals `autopilot.branch`); every other session gets one
+  informational line. That is what carries the run across context resets.
+- **Phases.** `run-pending` → `running` → `landing` → `triage` → `done`, with
+  `blocked` (and `blockedOn`) whenever only a human can unblock it.
+- **One milestone, one folder, one branch, one PR.** Milestones that can run in
+  parallel get their own `<missions>/<id>/<milestone>/` folder (its own state
+  file and lock) and their own session; `dependsOn` orders the rest.
+- **The evidence verbs** replace hand-written scripts: `dispatch-esc` /
+  `close-esc` (an escalation's dispatch and return in one write each),
+  `rerun-verified` (only `readOnly: true`, `exit: 0` proofs ever run),
+  `capture-verdict` (a validator's return, byte-for-byte from its transcript),
+  `record-testgaps-from-verdicts`, `append-followups`, and machine-stamped `ts`.
+- **The gate.** `mission gate <dir> <milestone>` runs the configured whole gate,
+  optionally on a throwaway database (`gates.database`), then the verifiedBy
+  re-run, and records it.
+- **Boundaries.** Never push to the default branch, merge around the land
+  command, skip or weaken a test or CI check, touch production, read secrets,
+  or decide a business rule. Those stay with the human, listed once at the end.
+
+The model-facing protocol is `mission prompt autopilot`; the runtime specifics
+(how a fresh session starts, which simplify and review commands exist) live in
+each adapter.

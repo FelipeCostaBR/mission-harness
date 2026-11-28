@@ -13,5 +13,7 @@ The PRD is written to `docs/prd/<id>/spec.md` (or the config's
 `paths.missions`), in the vocabulary of `mission.config.json`: its area slugs,
 surfaces and protected paths. Interview one question at a time with your
 recommended answer. Never skip Surfaces & Areas, Acceptance Criteria,
-Escalations or Milestones. When it is written, hand off to the `mission-plan`
-skill on that folder.
+Escalations or Milestones. When it is written, invoke the `mission-plan` skill on
+that folder yourself, in this session: the PRD folder is the mission's input,
+and the user is not asked to re-prompt. One chain, one entry point:
+write-a-prd → mission-plan (the human approves) → the fresh-context run.

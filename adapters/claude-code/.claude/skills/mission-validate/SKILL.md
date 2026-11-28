@@ -9,6 +9,8 @@ Load the phase prompt and follow it exactly:
 mission prompt validate
 ```
 
-Persist each validator's RAW verdict file first, then derive status with
-`mission state <missionDir> record-verdict`. The decision is `mission advance`'s,
+Run the gate with `mission gate <missionDir> <milestone>` in the background.
+Persist each validator's RAW verdict first, mechanically:
+`mission state <missionDir> capture-verdict <milestone> --as <milestone>-<area>.json --agent <agentId> --transcripts ~/.claude/projects/<project>/<session>/subagents`
+(never retype it), or write the file and derive with `record-verdict`. The decision is `mission advance`'s,
 not yours: a missing verdict is a failure, never an assumed pass.

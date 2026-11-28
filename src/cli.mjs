@@ -12,8 +12,9 @@
  * any model; `mission install <adapter>` wires them into a specific runtime.
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, cpSync } from "node:fs"
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, cpSync, mkdtempSync } from "node:fs"
 import { join, dirname, relative, isAbsolute, resolve } from "node:path"
+import { tmpdir, homedir } from "node:os"
 import { fileURLToPath } from "node:url"
 import { execFileSync } from "node:child_process"
 
@@ -56,8 +57,15 @@ import {
 } from "./rules/bookkeeping.mjs"
 import { pathWithinGlobs } from "./rules/boundary.mjs"
 import { runCLI as runStateCLI, COMMAND_NAMES as STATE_COMMANDS } from "./state/mission-state.mjs"
+import { autopilotDirective, pickAutopilotMission } from "./rules/autopilot.mjs"
+import { buildGatePlan, expandGateCommand, gateDatabase, gateDatabaseUrl, gateEnv, gateRecord, GateConfigError } from "./rules/gate.mjs"
+import { parseFlags } from "./rules/cli-boot.mjs"
+import { currentBranch, findAutopilotMissions } from "./io/autopilot.mjs"
+import { cleanupDataDir, killGroup, liveStep, runAlwaysStepsSync, runGatePlan } from "./io/gate.mjs"
+import { confineToTempRoots } from "./io/proofs.mjs"
 
 const PKG_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..")
+const CLI_PATH = fileURLToPath(import.meta.url)
 
 // A CLI is routinely piped into something that stops reading early — `head`,
 // `grep -q`, a pager the user quits. Node's default is to raise EPIPE as an
@@ -442,23 +450,43 @@ function cmdStatus(args) {
   void config
 }
 
+function nextMilestoneOf(state) {
+  try {
+    return resumePlan(state).nextMilestoneId
+  } catch {
+    return null
+  }
+}
+
 function cmdBrief(args) {
-  const { root } = loadConfig()
   // --only-active is the hook form: print the brief when a mission is armed AND
   // live, and print NOTHING otherwise. A session-start hook must be silent when
   // there is no mission, and must never fail the session.
   const onlyActive = args.includes("--only-active")
+  let config, root
+  try {
+    ;({ config, root } = loadConfig())
+  } catch (e) {
+    if (onlyActive) return
+    throw e
+  }
   const positional = args.filter((a) => !a.startsWith("-"))
   let missionDir
   try {
     missionDir = resolveMission(root, positional[0])
   } catch (e) {
-    if (onlyActive) return
-    throw e
+    if (!onlyActive) throw e
   }
+  const landCommand = config.autopilot?.landCommand ?? ""
   if (onlyActive) {
-    const state = readState(root, missionDir)
-    if (!state || state.missionStatus !== "active") return
+    const state = missionDir ? readState(root, missionDir) : null
+    if (!state || state.missionStatus !== "active") return autopilotPickup(root, config, landCommand)
+    const { brief } = buildBrief(root, missionDir)
+    // Armed: this is the session meant to run it, so an autopilot record turns
+    // into the directive that continues the pipeline without prompting.
+    const directive = autopilotDirective({ state, missionDir, next: nextMilestoneOf(state), runsHere: true, branch: currentBranch(root), landCommand })
+    out(directive ? `${brief}\n\n${directive}` : brief)
+    return
   }
   const { brief, plan } = buildBrief(root, missionDir)
   if (args.includes("--json")) {
@@ -466,6 +494,28 @@ function cmdBrief(args) {
     return
   }
   out(brief)
+}
+
+/**
+ * Nothing armed: a mission whose autopilot still owes work (an approved plan
+ * not started yet, a landing, a triage) may still be this session's to run.
+ * It is, only when this checkout's branch equals its `autopilot.branch`; any
+ * other session gets one informational line and is told not to act on it.
+ */
+function autopilotPickup(root, config, landCommand) {
+  const branch = currentBranch(root)
+  const found = findAutopilotMissions(root, config.paths?.missions ?? "docs/prd")
+  const picked = pickAutopilotMission(found, branch)
+  if (!picked) return
+  const { pick, runsHere } = picked
+  const directive = autopilotDirective({ state: pick.state, missionDir: pick.missionDir, next: nextMilestoneOf(pick.state), runsHere, branch, landCommand })
+  if (!directive) return
+  if (!runsHere) return out(directive)
+  const { brief } = buildBrief(root, pick.missionDir)
+  out(
+    `Mission ${pick.missionDir} is NOT armed; this checkout is on its autopilot branch. Arm it before any edit: ` +
+      `mission arm '${pick.missionDir}'.\n\n${brief}\n\n${directive}`,
+  )
 }
 
 function cmdCheck(args) {
@@ -794,6 +844,40 @@ function mergeClaudeHooks(root, snippetPath) {
   return added
 }
 
+/**
+ * `mission install claude-code --scope user [--target <dir>] [--force]`: the
+ * SAME skills and agents, copied into the user's runtime directory (default
+ * ~/.claude) so every project has them, with no per-project copy. It never
+ * edits a settings file: the hooks are printed for the user to merge. Each
+ * hook no-ops in a project with no mission.config.json, so user-level hooks
+ * are safe everywhere.
+ */
+function installUserScope(adapter, src, args, force) {
+  if (adapter !== "claude-code") throw new UserError(`--scope user is supported for the claude-code adapter only`)
+  const targetAt = args.indexOf("--target")
+  const target = targetAt === -1 ? join(homedir(), ".claude") : resolve(args[targetAt + 1] ?? "")
+  if (targetAt !== -1 && !args[targetAt + 1]) throw new UserError("--target needs a directory")
+  const from = join(src, ".claude")
+  const copied = []
+  for (const sub of ["skills", "agents"]) {
+    if (!existsSync(join(from, sub))) continue
+    mkdirSync(join(target, sub), { recursive: true })
+    for (const entry of readdirSync(join(from, sub), { withFileTypes: true })) {
+      const to = join(target, sub, entry.name)
+      const existed = existsSync(to)
+      cpSync(join(from, sub, entry.name), to, { recursive: true, force, errorOnExist: false })
+      copied.push(`${sub}/${entry.name}${existed && !force ? " (kept: already present)" : ""}`)
+    }
+  }
+  out(`${green("✓")} installed the ${adapter} skills and agents at user scope into ${target}${force ? " (refreshed)" : ""}`)
+  for (const c of copied) out(`    ${c}`)
+  out("")
+  out(`Settings were NOT changed. To get edit routing, the session-start brief and the`)
+  out(`autopilot directive in every project, merge these hooks into your user settings:`)
+  out(`    ${dim(join(from, "mission-harness-settings-snippet.json"))}`)
+  out(dim(`  (each hook is a no-op where there is no ${CONFIG_FILENAME} or no armed mission)`))
+}
+
 function cmdInstall(args) {
   const adapter = args[0]
   const adaptersDir = join(PKG_ROOT, "adapters")
@@ -811,9 +895,13 @@ function cmdInstall(args) {
   if (!available.includes(adapter)) {
     throw new UserError(`Unknown adapter "${adapter}". Available: ${available.join(", ")}`)
   }
+  const force = args.includes("--force")
+  const scopeAt = args.indexOf("--scope")
+  const scope = scopeAt === -1 ? "project" : args[scopeAt + 1]
+  if (!["project", "user"].includes(scope)) throw new UserError('--scope must be "project" or "user"')
+  if (scope === "user") return installUserScope(adapter, join(adaptersDir, adapter), args, force)
   const { root } = findProjectRoot()
   const src = join(adaptersDir, adapter)
-  const force = args.includes("--force")
   const copied = []
   for (const entry of readdirSync(src, { withFileTypes: true })) {
     if (entry.name === "README.md") continue
@@ -853,7 +941,9 @@ ${bold("Setup")}
   doctor                      validate the config against this repository
   migrate <agent-routing.json> [--write]
                               draft the config from an older harness's module registry
-  install [adapter]           wire the prompts into an agent runtime
+  install [adapter] [--scope user]
+                              wire the prompts into an agent runtime (user:
+                              the same skills for every project; settings untouched)
   prompt [name] [--raw]       print a seat prompt (works with ANY model)
 
 ${bold("Missions")}
@@ -865,6 +955,10 @@ ${bold("Missions")}
   state [missionDir] <cmd>    the ONLY way to change mission-state.json after
                               approval (locked, atomic, bookkeeping-checked);
                               run \`mission state help\` for its commands
+  gate [missionDir] <ms> [--dry-run] [--no-record]
+                              the milestone integration gate from \`gates\`
+                              (throwaway database, pre, integration, the
+                              verifiedBy re-run), recorded with set-gate
 
 ${bold("Decisions")} ${dim("(pure rules, evaluated against the mission's artifacts)")}
   seat resolve '<json>'       the model + effort a role's next spawn runs on
@@ -897,7 +991,7 @@ function cmdState(args) {
   const rest = explicit ? args.slice(1) : args
   const missionDir = resolveMission(root, explicit)
   const abs = isAbsolute(missionDir) ? missionDir : join(root, missionDir)
-  const r = runStateCLI([abs, ...rest], { surfaces: Object.keys(config.surfaces ?? {}) })
+  const r = runStateCLI([abs, ...rest], { surfaces: Object.keys(config.surfaces ?? {}), escalation: escalationConfig(config) })
   if (r.stdout) process.stdout.write(r.stdout)
   if (r.stderr) process.stderr.write(r.stderr)
   process.exitCode = r.exitCode
@@ -959,6 +1053,118 @@ function cmdCommits(args) {
   const report = commitBoundaryReport(collectCommits(range, { prdDir: abs, prdPath: rules.prdPath }), state, rules)
   out(JSON.stringify(report, null, 2))
   if (!report.ok) process.exitCode = 1
+}
+
+/**
+ * `mission gate [missionDir] <milestone> [--dry-run] [--no-record] [--keep-db]
+ * [--port <n>] [--deadline-min <n>] [--log-dir <dir under the temp dir>]`:
+ * the milestone integration gate, run as CI runs it. Every command comes from
+ * `gates` in the config: the optional throwaway database (`gates.database`),
+ * `pre`, the whole `integration` list, then the milestone's verifiedBy re-run,
+ * then the database teardown. One line per step (name, exit, log path); log
+ * bodies are never printed. Records `set-gate integration` unless --no-record.
+ * Exit: 0 green, 1 red, 2 a refused configuration or usage (nothing run).
+ */
+async function cmdGate(args) {
+  const { root, config } = loadConfig()
+  const firstFlag = args.findIndex((a) => a.startsWith("--"))
+  const positional = firstFlag === -1 ? args : args.slice(0, firstFlag)
+  const parsed = parseFlags(
+    firstFlag === -1 ? [] : args.slice(firstFlag),
+    { "--port": "port", "--deadline-min": "deadlineMin", "--log-dir": "logDir" },
+    ["--dry-run", "--no-record", "--keep-db"],
+  )
+  const refuse = (msg) => {
+    err(red(`mission gate: ${msg}`))
+    process.exitCode = 2
+  }
+  if (parsed.error) return refuse(parsed.error)
+  if (positional.length < 1 || positional.length > 2) return refuse("usage: mission gate [missionDir] <milestone> [--dry-run] [--no-record] [--keep-db] [--port <n>] [--deadline-min <n>] [--log-dir <dir>]")
+  const missionDir = resolveMission(root, positional.length === 2 ? positional[0] : null)
+  const milestone = positional[positional.length - 1]
+  if (!/^[A-Za-z0-9_-]+$/.test(milestone)) return refuse("<milestone> must be a milestone id")
+  const state = requireState(root, missionDir)
+  if (!(state.milestones ?? []).some((m) => m?.id === milestone)) return refuse(`unknown milestone ${milestone}`)
+  const dryRun = parsed.booleans.has("--dry-run")
+  const record = !parsed.booleans.has("--no-record")
+  const keepDb = parsed.booleans.has("--keep-db")
+  const db = gateDatabase(config.gates)
+  const port = Number(parsed.values.port ?? db.port)
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) return refuse("--port must be an integer 1024-65535")
+  const deadlineMin = Number(parsed.values.deadlineMin ?? config.gates?.deadlineMinutes ?? 120)
+  if (!Number.isFinite(deadlineMin) || deadlineMin <= 0) return refuse("--deadline-min must be a positive number")
+  const abs = isAbsolute(missionDir) ? missionDir : join(root, missionDir)
+  const rel = relative(root, abs).split("\\").join("/")
+
+  let logDir
+  try {
+    logDir = parsed.values.logDir ? confineToTempRoots(parsed.values.logDir) : null
+  } catch (e) {
+    return refuse(`--log-dir ${e.message}`)
+  }
+  const temp = (prefix) => (dryRun ? join(tmpdir(), `${prefix}XXXXXX`) : mkdtempSync(join(tmpdir(), prefix)))
+  logDir = logDir ?? temp(`mission-gate-${milestone}-`)
+  if (!dryRun) mkdirSync(logDir, { recursive: true })
+  const dataDir = db.enabled ? join(temp("mission-gate-db-"), "data") : null
+  const url = db.enabled ? gateDatabaseUrl(db, { port, dataDir }) : null
+  const vars = { missionDir: rel, milestone, port, dataDir, logDir, url }
+  const rerun = [process.execPath, CLI_PATH, "state", abs, "rerun-verified", milestone, ...(record ? ["--record"] : []), "--log-dir", logDir]
+
+  let plan, env
+  try {
+    plan = buildGatePlan(config.gates, vars, rerun)
+    env = gateEnv(process.env, db, url)
+  } catch (e) {
+    if (e instanceof GateConfigError) return refuse(e.message)
+    throw e
+  }
+  if (dryRun) {
+    for (const st of plan) out(`plan ${st.name}${st.critical ? " (critical)" : ""}${st.always ? " (always)" : ""}: ${st.cmd ?? st.argv.join(" ")}`)
+    out(`plan database: ${db.enabled ? `throwaway, port ${port}, env ${(db.envKeys ?? []).join(",")} overridden` : "none (gates.database.enabled is false)"}; deadline ${deadlineMin} min`)
+    out(`plan record: ${record ? "set-gate integration" : "none (--no-record)"}; logs ${logDir}`)
+    return
+  }
+  const stoppedCheck = db.enabled && db.stoppedCheck ? expandGateCommand(db.stoppedCheck, vars) : ""
+  let cleaned = false
+  const cleanup = (teardownOk) => {
+    if (cleaned || !dataDir) return
+    cleaned = true
+    cleanupDataDir(dataDir, { stoppedCheck, teardownOk, keep: keepDb, env, cwd: root })
+  }
+  const onSignal = (sig, code) => () => {
+    err(`mission gate: ${sig}: stopping the step and tearing the database down`)
+    killGroup(liveStep.child, "SIGKILL")
+    cleanup(runAlwaysStepsSync(plan, { env, cwd: root }))
+    process.exit(code)
+  }
+  const handlers = [["SIGINT", onSignal("SIGINT", 130)], ["SIGTERM", onSignal("SIGTERM", 143)]]
+  for (const [sig, h] of handlers) process.once(sig, h)
+  let results
+  try {
+    results = await runGatePlan(plan, {
+      logDir,
+      env,
+      cwd: root,
+      deadline: Date.now() + deadlineMin * 60_000,
+      onStep: (r) =>
+        out(`gate ${r.name} ${r.skipped ? `skipped (${r.skipped})` : `exit=${r.exitCode}`}${r.expectFailed ? " expect=unmatched" : ""}${r.log ? ` log=${r.log}` : ""}`),
+    })
+  } finally {
+    for (const [sig, h] of handlers) process.removeListener(sig, h)
+  }
+  cleanup((results ?? []).filter((r) => r.always).every((r) => r.exitCode === 0))
+  const payload = gateRecord(milestone, results)
+  if (record) {
+    const r = runStateCLI([abs, "set-gate", "integration", JSON.stringify(payload)], { surfaces: Object.keys(config.surfaces ?? {}), escalation: escalationConfig(config) })
+    if (r.exitCode !== 0) {
+      err(`mission gate: set-gate refused: ${r.stderr.trim()}`)
+      process.exitCode = 1
+      return
+    }
+    process.stdout.write(r.stdout)
+  }
+  out(`GATE ${milestone} passed=${payload.passed} logs=${logDir}`)
+  process.exitCode = payload.passed ? 0 : 1
 }
 
 /**
@@ -1066,6 +1272,8 @@ async function main() {
       return cmdCommits(args)
     case "compact":
       return cmdCompact(args)
+    case "gate":
+      return cmdGate(args)
     case "migrate":
       return cmdMigrate(args)
     case "disarm":

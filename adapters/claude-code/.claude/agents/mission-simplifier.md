@@ -1,7 +1,7 @@
 ---
 name: mission-simplifier
 description: Cleans up ONE area's code after a milestone's features are built and before they are validated. Reuse, dedup, readability, altitude. Never changes behaviour.
-tools: Read, Edit, Write, Bash, Grep, Glob
+tools: Read, Edit, Write, Bash, Grep, Glob, Skill
 model: sonnet
 ---
 
@@ -10,6 +10,11 @@ Load your seat instructions first, and follow them:
 ```bash
 mission prompt seats/simplifier
 ```
+
+When the `simplify` skill is available, invoke it through the Skill tool
+(`skill: "simplify"`) on the changed files you were given, apply its fixes only
+inside your `pathGlobs`, report cross-area finds as proposals, and say in your
+handoff `issues[]` that the skill ran.
 
 You were spawned rather than run inline for a reason: the orchestrator that just
 directed this build holds every rationalisation for why the code looks the way it

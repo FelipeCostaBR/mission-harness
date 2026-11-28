@@ -122,6 +122,15 @@ from the touched-area set:
 
 Record the result with `mission state <missionDir> set-gate integration '<json>'`.
 
+**`mission gate <missionDir> <milestone>` runs this list for you**, from the
+config: the throwaway database (`gates.database`), `gates.pre`, every
+`gates.integration` command, then `mission state … rerun-verified <milestone>
+--record` (each admissible `verifiedBy`: `readOnly: true`, `exit: 0`; anything
+else is red "not admissible" and is never executed), then the teardown, under one
+deadline, one log per step, and it records `set-gate integration`. Put the
+repository's WHOLE suite in `gates.integration`, the one CI runs, never only the
+touched areas' (invariant 18). Run it in the background; it can take an hour.
+
 **Run quiet.** Redirect each command's output to a log and ingest only the exit
 code: `<cmd> > /tmp/gate-N.log 2>&1; echo "exit=$?"`. On a RED command do not
 `cat` the log — take a bounded slice (`grep -E "FAIL|error|✕" … | head -40`),
@@ -173,6 +182,14 @@ verdict value.
 
 If a validator did not return, its verdict file is absent → that area is
 **failing by default**, never assumed-pass.
+
+**Capture, never retype** (invariant 19). A read-only validator cannot write its
+own file, and retyping its return costs tokens and loses bytes. Take it from the
+validator's transcript:
+`mission state <missionDir> capture-verdict <milestone> --as <milestone>-<area>[-r<n>].json --transcript <file>`
+(or `--agent <id> --transcripts <dir>`). It uses the LAST hand-back only, refuses
+a verdict whose `area` differs from the name, writes it byte-for-byte and derives
+exactly as `record-verdict` does.
 
 **b. Mechanical derivation.** Compute `assertionStatus` STRICTLY from the
 persisted files, with the CLI doing the derivation:
@@ -378,9 +395,11 @@ Record `missionFinalReview: { ran, findings, ts }` — never on `correctiveRound
 so running it cannot trip the breaker. Confirmed findings block `done` and route
 to self-heal. Run it ONCE per mission.
 
-**Then hand the heavier review back to the human.** Append a follow-up asking for
-a human code review of the branch before it merges, and say it plainly in the
-finish summary.
+**Then hand the heavier review back to the human**, unless the mission is on
+autopilot. Append a follow-up asking for a human code review of the branch before
+it merges, and say it plainly in the finish summary. Under autopilot the human's
+standing approval covers an independent code review of each milestone PR at a
+high, not maximum, effort; the landing steps are `mission prompt autopilot` § 3.12.
 
 ---
 

@@ -54,7 +54,9 @@ export const DEFAULT_CONFIG = {
   paths: { missions: "docs/prd", specs: "docs/specs" },
   areas: [],
   surfaces: {},
-  gates: { pre: [], integration: [] },
+  // `mission gate` runs pre + integration (+ the throwaway database when
+  // `database.enabled`) under one deadline. See src/rules/gate.mjs.
+  gates: { pre: [], integration: [], deadlineMinutes: 120, database: { enabled: false } },
   protectedPaths: [],
   unownedPaths: [],
   testGlobs: [],
@@ -80,6 +82,10 @@ export const DEFAULT_CONFIG = {
   },
   constraints: [],
   liveGate: { enabled: false, runner: "", skipExitCode: 78, areas: {} },
+  // The end-to-end run a human approves at plan time (docs/protocol.md § Autopilot).
+  // `landCommand` lands a PR once every check is green; empty means "the
+  // project's documented land step" (the brief names it as such).
+  autopilot: { landCommand: "", maxLandFixRounds: 3, followUpBatchSize: 5, smallFixMaxLines: 150 },
 }
 
 const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v)
@@ -87,7 +93,7 @@ const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v)
 /** Shallow-merge defaults so an older or partial config still loads. */
 function withDefaults(raw) {
   const cfg = { ...DEFAULT_CONFIG, ...raw }
-  for (const key of ["project", "paths", "gates", "seats", "policy", "liveGate"]) {
+  for (const key of ["project", "paths", "gates", "seats", "policy", "liveGate", "autopilot"]) {
     cfg[key] = { ...DEFAULT_CONFIG[key], ...(isObj(raw?.[key]) ? raw[key] : {}) }
   }
   return cfg

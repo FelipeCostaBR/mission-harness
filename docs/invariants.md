@@ -208,3 +208,62 @@ requires **both** signals — flag present AND `missionStatus === "active"` — 
 leftover flag from a failed disarm is harmless once the milestone is recorded.
 
 Never remove the flag with a bare relative `rm`. See invariant 10.
+
+### 18. The milestone gate is the repository's whole gate
+
+Run what CI runs, over the whole repository, against a fresh database seeded
+with reference data only. Never only the touched areas' suites.
+
+Observed: a gate that ran the three touched packages' suites passed, and CI then
+went red on a boundary scan in a fourth package that reads the first one's
+files. No touched-set derivation can see that. The same full run surfaced a red
+suite in a package no gate had run. `mission gate` runs the configured whole
+gate; `expect` catches the suite that ran nothing and exited 0.
+
+### 19. Evidence is captured, never retyped; time is machine-stamped
+
+A validator's return reaches `verdicts/` through `capture-verdict`, byte for
+byte from its own transcript, using its last hand-back only and bound to its
+area's name. `merge-meta`, `set-gate` and `close-esc` stamp `ts` themselves and
+refuse a typed non-ISO time.
+
+Observed: an orchestrator retyping read-only validators' returns spent tens of
+thousands of tokens per milestone and, on one, condensed the evidence strings:
+the paraphrase invariant 5 forbids, done by the seat meant to enforce it. Typed
+timestamps ran ahead of real time until someone noticed. A proof's
+`readOnly: true` is always stated by its author: a verb that stamped it let a
+mutating command into the blind re-run, which `rerun-verified` now refuses to
+execute.
+
+### 20. A grant includes the tests that pin it, and its data
+
+An escalation's `files[]` and a feature's `pathGlobs` name every test that pins
+the files they add or change (allowlists, source scans, parity tests, file-count
+pins, another package's boundary scan), and every assertion's data is in the
+seed or fixtures, or owned by a procedure.
+
+Observed: one pre-flight review found twelve grants missing their pin tests,
+each a corrective round had it shipped, and seeds missing the rows assertions
+needed. A worker that ran only its own tests met a cross-package scan only at
+the gate, costing a fixer spawn. Plan time is the cheapest place to grep for it.
+
+### 21. Autopilot is a human's consent, recorded and bounded
+
+Only a human's own approval answer enables it. The CLI checks the record's
+shape and cannot prove consent, so the plan change that carries it is reviewed
+before it lands. The session-start directive is text, a directive only in the
+session meant to run that folder, with `brief` re-injected as quoted data.
+
+Observed in review before release: a committed run-pending record told a plain
+session cut from the default branch to arm and build an unrelated folder. The
+branch-or-armed rule and the informational line for everyone else exist for
+that. Autopilot never crosses the human-only list; it sets `blocked` and stops.
+
+### 22. One milestone, one folder, one branch, one PR; the merge time is the proof
+
+Parallel milestones get separate folders, so no two sessions share a state file
+or its lock. A PR lands only through the land command once every check is green,
+and a merge time read back is the only evidence it merged. Disarm comes after
+it. Every finding becomes a follow-up, and each follow-up gets a terminal
+triage disposition: closed, fixed in its own PR, kept for a human, or deferred
+with a reason.
